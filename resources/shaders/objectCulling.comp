@@ -58,8 +58,12 @@ vec4 calculateInvisibleBlockColorAndOpacity(vec4 color);
 
 //// PROCESS SPRITE FUNCTION ////
 bool processSprite(uint preCulledSpriteIndex) {
-    vec2 startPosition         = PreCulledSprite_startPosition[preCulledSpriteIndex];
-    uint groupCombinationIndex = PreCulledSprite_groupCombinationIndex[preCulledSpriteIndex];
+    uint spriteIndex = u_spriteRemapIndicies[preCulledSpriteIndex];
+
+    // The pre culled data belongs to the sprite, not to the draw order, so one
+    // copy is shared by every sorted batch.
+    vec2 startPosition         = PreCulledSprite_startPosition[spriteIndex];
+    uint groupCombinationIndex = PreCulledSprite_groupCombinationIndex[spriteIndex];
 
     //// APPLY GROUP COMBINATION STATE ////
     GroupCombinationState state = u_groupCombinationStates[groupCombinationIndex];
@@ -68,8 +72,6 @@ bool processSprite(uint preCulledSpriteIndex) {
 
     if (!isObjectOnScreen())
         return false;
-
-    uint spriteIndex = u_spriteRemapIndicies[preCulledSpriteIndex];
 
     InputSprite sprite = u_inputSprites[spriteIndex];
     objectIndex = sprite.objectIndex;

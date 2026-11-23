@@ -1,3 +1,21 @@
+# 0.4.1-alpha
+- Fixed the stutters in levels that change color channel blending a lot: the
+  renderer used to hold its scheduler lock for the whole sort of the level's
+  sprites while building a new sorted batch on a worker thread, so the main
+  thread (and the frame) waited for it. The sprite list is sorted once when the
+  level loads, and a new batch is now only a cheap pass over it
+- Only one sorted batch is generated at a time. Bursts of blending changes used
+  to start a thread each, which took CPU away from the game without finishing
+  any batch sooner
+- The pre culled sprite data (start position and group combination per sprite)
+  is the same for every blend state, so it is one shared buffer now instead of
+  one copy per cached batch. That removes a multi MiB upload from every rebuild
+  and lowers vram use while the batch cache is warm
+- The sorted batch cache keeps 12 batches instead of 6, and a batch that was
+  just created no longer looks like the least recently used one
+- Removed an unused global set in the group manager that inserted every object
+  of every level and kept them alive after the level was gone
+
 # 0.4.0-alpha
 - The draw pass no longer asks GL which program is bound for every layer. That
   query is synchronous, and a level draws well over a hundred layers per frame;

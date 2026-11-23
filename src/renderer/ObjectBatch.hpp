@@ -94,6 +94,13 @@ private:
     UPtr<Buffer> indexBuffer = nullptr;
     UPtr<Buffer> inputSpriteBuffer = nullptr;
 
+    /*
+        Start position and group combination per sprite. They don't depend on
+        the blend states, so every sorted batch shares this one buffer instead
+        of uploading its own copy.
+    */
+    UPtr<PreCulledSprite::Buffer> preCulledSpritesBuffer = nullptr;
+
     // GPU buffers
     UPtr<RawSprite::Buffer> rawSpriteBuffer = nullptr;
     UPtr<Buffer> culledIndexBuffer = nullptr;

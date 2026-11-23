@@ -243,6 +243,16 @@ void ObjectBatch::finishWriting() {
     if (!vertexBuffer || !inputSpriteBuffer || !rawSpriteBuffer || !culledIndexBuffer)
         log::error("Failed to create one or more object batch buffers");
 
+    preCulledSpritesBuffer = PreCulledSprite::Buffer::create(getSpriteCount(), GL_STATIC_DRAW);
+
+    if (preCulledSpritesBuffer) {
+        workGroupScheduler.writePreCulledSprites(*preCulledSpritesBuffer);
+        preCulledSpritesBuffer->flushAllAndUnmap();
+    } else
+        log::error("Failed to create the pre culled sprite buffer");
+
+    workGroupScheduler.finalizeSpriteEntries();
+
     verticies.clear();
     // indicies.clear();
     inputSprites.clear();
@@ -320,8 +330,9 @@ void ObjectBatch::predraw() {
     if (needsNewBatch) {
         // Without a batch at all there is nothing to draw, so request one
         // right away. Otherwise wait until the blend state is stable so a
-        // state that only lasts a frame or two never re-sorts the whole level.
-        bool mayRegenerate = !sortedBatch || stableBlendStateFrames >= REGENERATE_AFTER_STABLE_FRAMES;
+        // state that only lasts a frame or two never rebuilds the whole level.
+        bool mayRegenerate = !sortedBatch ||
+            stableBlendStateFrames >= REGENERATE_AFTER_STABLE_FRAMES;
 
         if (mayRegenerate) {
             ScopedFrameTimer timer(renderer.getFrameTiming().sortedBatch);
@@ -389,9 +400,10 @@ void ObjectBatch::predraw() {
 }
 
 void ObjectBatch::prepareCullingComputeShader() {
-    if (!inputSpriteBuffer || !rawSpriteBuffer)
+    if (!inputSpriteBuffer || !rawSpriteBuffer || !preCulledSpritesBuffer)
         return;
 
     inputSpriteBuffer->bindAsStorageBuffer(INPUT_SPRITE_BUFFER_BINDING);
+    preCulledSpritesBuffer->bind();
     rawSpriteBuffer->bind();
 }

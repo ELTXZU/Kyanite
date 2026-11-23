@@ -28,7 +28,6 @@ struct SortedObjectBatch {
     UPtr<Buffer> spriteRemapBuffer;
     UPtr<Buffer> workGroupBuffer;
     UPtr<Buffer> drawCommandBuffer;
-    UPtr<PreCulledSprite::Buffer> preCulledSpritesBuffer;
 
     //// BUFFER DATAS ////
     std::vector<u32> inputSpriteIndicies;
@@ -50,6 +49,20 @@ public:
         u32 inputSpriteIndex,
         u32 triCount
     );
+
+    /*
+        Sorts the sprite entries once, after every sprite of the level was
+        added. Generation jobs then only have to bucket them, instead of
+        sorting the whole level for every blend state change.
+    */
+    void finalizeSpriteEntries();
+
+    /*
+        The pre culled sprite data (start position and group combination) is
+        the same for every blend state, so it lives in one buffer instead of
+        one per sorted batch.
+    */
+    void writePreCulledSprites(PreCulledSprite::Buffer& buffer);
 
     inline usize getSpriteCount() const {
         return spriteEntries.size();
@@ -77,8 +90,8 @@ private:
 
     /*
         Every blend state combination used to keep its own full set of gpu
-        buffers (several MiB) forever. Keeping only the most recent ones
-        bounds the vram usage of long sessions.
+        buffers forever. Keeping only the most recent ones bounds the vram
+        usage of long sessions.
     */
     void trimSortedBatchCacheLocked(SortedObjectBatch* inUseBatch);
 
@@ -103,10 +116,11 @@ private:
 
     std::vector<SpriteEntry> spriteEntries;
 
-    struct GenerateJob {
-        ColorChannelBlendStates blendStates;
-        UPtr<SortedObjectBatch> sortedBatch;
-    };
+    /*
+        Indices into spriteEntries, sorted by z order. The sprite entries never
+        change after loading, so generation jobs read this without locking.
+    */
+    std::vector<u32> spritesByZOrder;
 
     struct GenerationJob {
         //// INPUTS ////
@@ -114,7 +128,6 @@ private:
         WorkGroupScheduler& scheduler;
         
         ColorChannelBlendStates blendStates;
-        UPtr<PreCulledSprite::Buffer> preCulledSprites;
 
         isize maxWorkGroupCount = -1;
 
@@ -122,9 +135,7 @@ private:
         std::thread thread;
 
         //// VARIABLES USED IN GENERATION ////
-        usize currentSpriteIndex;
-
-        std::unordered_map<LayerKey, std::vector<const SpriteEntry*>> sortedSpriteLayers;
+        std::map<LayerKey, std::vector<u32>> layerSprites;
         std::vector<u32> inputSpriteIndicies;
         std::vector<WorkGroup> workGroups;
 
@@ -135,10 +146,8 @@ private:
 
         void generateSortedBatchForBlendStates();
 
-        void loadAndSortSprites(const std::vector<SpriteEntry>& sprites);
-
         void generateWorkGroupsForLayer(
-            LayerKey layerKey,
+            const std::vector<u32>& spriteIndicies,
             u32 spritesPerWorkGroup,
             u32& culledIndexBufferOutputIndex
         );

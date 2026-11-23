@@ -82,8 +82,6 @@ GroupCombination::operator std::string() const {
 
 GroupManager::~GroupManager() {}
 
-static std::set<GameObject*> dobjects;
-
 void GroupManager::initWithObjects(cocos2d::CCArray* objects) {
     if (!objects)
         return;
@@ -101,8 +99,6 @@ void GroupManager::initWithObjects(cocos2d::CCArray* objects) {
         else if (alphaGroupId)
             alphaGroupIds.insert(alphaGroupId.value());
 
-        dobjects.insert(object);
-        
         GroupCombination comb = GroupCombination(object);
 
         if (groupCombinationIndicies.find(comb) == groupCombinationIndicies.end()) {
