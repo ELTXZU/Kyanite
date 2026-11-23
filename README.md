@@ -11,7 +11,7 @@ transforms, triggers and visibility are resolved on the GPU every frame instead
 of on the CPU, so levels that are CPU bound in vanilla keep their framerate.
 Shaders, UI, particles and anything that isn't a level object are untouched.
 
-A fork of [Bismuth](https://github.com/IliasHDZ/Bismuth) by IliasHDZ.
+A fork of [Bismuth](https://github.com/iliasHDZ/Bismuth) by IliasHDZ.
 
 [Status](#status) · [Numbers](#numbers) · [How it works](#how-it-works) ·
 [Settings](#settings) · [Compatibility](#compatibility) ·
