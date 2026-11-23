@@ -20,6 +20,9 @@ struct SortedObjectBatch {
     u32 workGroupCount;
     std::map<LayerKey, WorkGroupRange> workGroupRangePerLayerKey;
 
+    // Used to drop the least recently used batch from the cache.
+    u64 lastUsedTime = 0;
+
     //// BUFFERS ////
     bool haveBuffersBeenCreated = false;
     UPtr<Buffer> spriteRemapBuffer;
@@ -52,7 +55,14 @@ public:
         return spriteEntries.size();
     }
 
-    SortedObjectBatch* fetchSortedBatchForBlendStates(const ColorChannelBlendStates& blendStates);
+    /*
+        Returns the sorted batch for these blend states, or nullptr while one
+        is still being generated. inUseBatch is never evicted from the cache.
+    */
+    SortedObjectBatch* fetchSortedBatchForBlendStates(
+        const ColorChannelBlendStates& blendStates,
+        SortedObjectBatch* inUseBatch = nullptr
+    );
 
     inline void waitForJobs() {
         for (auto& [k, job] : currentGenerationJobs)
@@ -63,7 +73,14 @@ public:
 private:
     void cleanUpFinishedJobs();
 
-    void addGenerationJob(const ColorChannelBlendStates& blendStates);
+    void addGenerationJob(const ColorChannelBlendStates& blendStates, SortedObjectBatch* inUseBatch);
+
+    /*
+        Every blend state combination used to keep its own full set of gpu
+        buffers (several MiB) forever. Keeping only the most recent ones
+        bounds the vram usage of long sessions.
+    */
+    void trimSortedBatchCacheLocked(SortedObjectBatch* inUseBatch);
 
 private:
     struct SpriteEntry {

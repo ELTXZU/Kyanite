@@ -150,6 +150,7 @@ bool Renderer::initInternal(PlayLayer* layer, CCArray* levelObjects) {
 
     debugToolsEnabled = Mod::get()->getSettingValue<bool>("debug_tools");
     disableObjectPulse = Mod::get()->getSettingValue<bool>("disable_object_pulse");
+    frameTiming.setEnabled(Mod::get()->getSettingValue<bool>("frame_timing"));
 
     if (levelUsesUnsupportedTriggers(levelObjects)) {
         log::warn("Level uses area, transform or keyframe triggers, which the optimized renderer doesn't support yet; those objects keep their initial transform");
@@ -467,6 +468,12 @@ void Renderer::prepareColorChannelBuffer() {
 
     auto effectManager = layer->m_effectManager;
 
+    // The color channel buffer is only uploaded when a color actually changed.
+    // Colors stay constant for most frames, so this removes a buffer upload
+    // (and its driver overhead) from those frames.
+    bool changed = !colorChannelBufferInitialized;
+    colorChannelBufferInitialized = true;
+
     for (usize i = 0; i < effectManager->m_colorActionSpriteVector.size(); i++) {
         auto sprite = effectManager->m_colorActionSpriteVector[i];
         if (sprite == nullptr)
@@ -475,14 +482,30 @@ void Renderer::prepareColorChannelBuffer() {
         auto id = sprite->m_colorID;
 
         auto& channelColor = colorChannelBuffer->u_channelColors[id];
-        channelColor.r = sprite->m_copyColor.r;
-        channelColor.g = sprite->m_copyColor.g;
-        channelColor.b = sprite->m_copyColor.b;
-        channelColor.a = (u8)sprite->m_opacity;
+
+        u8 r = sprite->m_copyColor.r;
+        u8 g = sprite->m_copyColor.g;
+        u8 b = sprite->m_copyColor.b;
+        u8 a = (u8)sprite->m_opacity;
+
+        if (channelColor.r == r && channelColor.g == g && channelColor.b == b && channelColor.a == a)
+            continue;
+
+        channelColor.r = r;
+        channelColor.g = g;
+        channelColor.b = b;
+        channelColor.a = a;
+        changed = true;
     }
 
-    colorChannelBuffer->u_channelColors[COLOR_CHANNEL_BLACK] = { 0, 0, 0, 255 };
-    colorChannelBufferObject->flush(0, colorChannelBufferObject->getSize());
+    auto& blackChannel = colorChannelBuffer->u_channelColors[COLOR_CHANNEL_BLACK];
+    if (blackChannel.r != 0 || blackChannel.g != 0 || blackChannel.b != 0 || blackChannel.a != 255) {
+        blackChannel = { 0, 0, 0, 255 };
+        changed = true;
+    }
+
+    if (changed)
+        colorChannelBufferObject->flush(0, colorChannelBufferObject->getSize());
 }
 
 void Renderer::generateObjectInfoBuffer(std::vector<GameObject*>& objects) {
@@ -564,15 +587,33 @@ void Renderer::draw() {
     if (!shader || !cullingComputeShader)
         return;
 
-    fetchBlendingStates();
+    frameTiming.beginFrame();
 
-    u64 prevTime = getTime();
-    prepareShaderUniforms();
-    if (!isPaused()) {
+    {
+        ScopedFrameTimer timer(frameTiming.colorChannels);
+
+        fetchBlendingStates();
         prepareColorChannelBuffer();
-        groupManager.updateGroupStateBuffer();
+    }
 
-        objectBatch.predraw();
+    {
+        ScopedFrameTimer timer(frameTiming.uniforms);
+
+        prepareShaderUniforms();
+    }
+
+    if (!isPaused()) {
+        {
+            ScopedFrameTimer timer(frameTiming.groupStates);
+
+            groupManager.updateGroupStateBuffer();
+        }
+
+        {
+            ScopedFrameTimer timer(frameTiming.culling);
+
+            objectBatch.predraw();
+        }
     }
 
     renderingTimer.start();
@@ -582,6 +623,7 @@ void Renderer::finish() {
     renderingTimer.stop();
 
     updateDebugText();
+    frameTiming.endFrame();
 }
 
 void Renderer::updateDebugText() {

@@ -147,6 +147,20 @@ void GroupManager::initWithObjects(cocos2d::CCArray* objects) {
 
     alphaIndiciesCount = alphaCombIndex;
 
+    {
+        std::set<GroupID> alphaGroupIdsInCombinations;
+
+        usize i = 0;
+        while (i < alphaIndexGroupIdFastStructure.size()) {
+            u32 groupCount = alphaIndexGroupIdFastStructure[i++];
+
+            for (u32 j = 0; j < groupCount && i < alphaIndexGroupIdFastStructure.size(); j++)
+                alphaGroupIdsInCombinations.insert((GroupID)alphaIndexGroupIdFastStructure[i++]);
+        }
+
+        alphaUpdateGroupIds.assign(alphaGroupIdsInCombinations.begin(), alphaGroupIdsInCombinations.end());
+    }
+
     transformCombinationCount = transformCombIndex;
     log::info("Number of unique group transformations: {}", transformCombinationCount);
 
@@ -229,7 +243,17 @@ void GroupManager::updateGroupStateBuffer() {
     updateAlphaValues();
     updatePulseEntries();
 
-    groupStateBuffer->flush(0, groupStateBuffer->getSize());
+    // Group transforms, opacity and pulse indices only change when a trigger
+    // or a pulse changes them, so most frames don't need an upload at all.
+    if (!stateDirty)
+        return;
+
+    {
+        ScopedFrameTimer timer(renderer.getFrameTiming().groupStatesUpload);
+        groupStateBuffer->flush(0, groupStateBuffer->getSize());
+    }
+
+    stateDirty = false;
 }
 
 void GroupManager::storeGroupStates(StoredGroupStates& storage) {
@@ -252,6 +276,8 @@ void GroupManager::restoreGroupStates(StoredGroupStates& storage) {
 
     usize numToggles = std::min(storage.isGroupToggledOn.size(), isGroupToggledOn.size());
     std::copy_n(storage.isGroupToggledOn.begin(), numToggles, isGroupToggledOn.begin());
+
+    stateDirty = true;
 }
 
 void GroupManager::storeCheckpoint(CheckpointObject* checkpoint) {
@@ -285,6 +311,8 @@ void GroupManager::moveGroup(GroupID groupId, float deltaX, float deltaY) {
     const auto& combIndicies = groupCombinationIndiciesPerGroupId[groupId];
     for (auto combIndex : combIndicies)
         groupStates[combIndex].offset += glm::vec2(deltaX, deltaY);
+
+    stateDirty = true;
 }
 
 void GroupManager::rotateGroup(
@@ -320,6 +348,8 @@ void GroupManager::rotateGroup(
             groupState.offset = matrix * (groupState.offset - center) + center;
         }
     }
+
+    stateDirty = true;
 }
 
 void GroupManager::toggleGroup(GroupID groupId, bool enabled) {
@@ -341,7 +371,11 @@ void GroupManager::resetGroupStates() {
         groupState.localTransform = glm::identity<glm::mat2>();
         groupState.offset = glm::vec2(0, 0);
     }
+
     std::fill(isGroupToggledOn.begin(), isGroupToggledOn.end(), true);
+
+    stateDirty = true;
+    alphaValuesInitialized = false;
 }
 
 void GroupManager::addGroupCombination(GroupCombination& comb, GroupCombinationIndex index) {
@@ -365,19 +399,37 @@ void GroupManager::addGroupCombination(GroupCombination& comb, GroupCombinationI
 }
 
 void GroupManager::updateAlphaValues() {
+    ScopedFrameTimer timer(renderer.getFrameTiming().groupStatesAlpha);
+
     PlayLayer* layer = renderer.getPlayLayer();
     if (!layer || !layer->m_effectManager)
         return;
 
-    for (u32 id = 1; id <= (u32)maxGroupId; id++) {
-        if (id >= alphaValuesPerGroupId.size() || id >= isGroupToggledOn.size())
+    auto effectManager = layer->m_effectManager;
+
+    // Only group ids that appear in an alpha combination can affect the
+    // opacity of a group combination, so the level's other (potentially
+    // thousands of) group ids don't have to be queried every frame.
+    bool groupValueChanged = !alphaValuesInitialized;
+
+    for (GroupID id : alphaUpdateGroupIds) {
+        usize groupId = (usize)id;
+
+        if (groupId >= alphaValuesPerGroupId.size() || groupId >= isGroupToggledOn.size())
             continue;
 
-        if (isGroupToggledOn[id])
-            alphaValuesPerGroupId[id] = layer->m_effectManager->opacityModForGroup(id);
-        else
-            alphaValuesPerGroupId[id] = 0.0;
+        float value = isGroupToggledOn[groupId] ? effectManager->opacityModForGroup(id) : 0.0f;
+
+        if (alphaValuesPerGroupId[groupId] != value) {
+            alphaValuesPerGroupId[groupId] = value;
+            groupValueChanged = true;
+        }
     }
+
+    if (!groupValueChanged)
+        return;
+
+    alphaValuesInitialized = true;
 
     u32* alphaFast = alphaIndexGroupIdFastStructure.data();
     for (u32 alphaIndex = 0; alphaIndex < alphaIndiciesCount; alphaIndex++) {
@@ -398,8 +450,16 @@ void GroupManager::updateAlphaValues() {
             continue;
 
         u32 alphaIndex = alphaIndiciesPerGroupCombinationIndex[combIndex];
-        if (alphaIndex < alphaValuesPerAlphaIndex.size())
-            groupStates[combIndex].opacity = alphaValuesPerAlphaIndex[alphaIndex];
+        if (alphaIndex >= alphaValuesPerAlphaIndex.size())
+            continue;
+
+        float opacity = alphaValuesPerAlphaIndex[alphaIndex];
+
+        if (groupStates[combIndex].opacity == opacity)
+            continue;
+
+        groupStates[combIndex].opacity = opacity;
+        stateDirty = true;
     }
 }
 
@@ -436,6 +496,7 @@ struct PulseEntry {
 
 void GroupManager::updatePulseEntries() {
     PROFILER_SCOPE("GroupManager::updatePulseEntries");
+    ScopedFrameTimer timer(renderer.getFrameTiming().groupStatesPulse);
 
     PlayLayer* layer = renderer.getPlayLayer();
     if (!layer || !layer->m_effectManager)
@@ -443,8 +504,13 @@ void GroupManager::updatePulseEntries() {
 
     auto effectManager = layer->m_effectManager;
 
-    for (usize i = 0; i < getGroupCombinationCount(); i++)
+    for (usize i = 0; i < getGroupCombinationCount(); i++) {
+        if (groupStates[i].pulseIndex == 0)
+            continue;
+
         groupStates[i].pulseIndex = 0;
+        stateDirty = true;
+    }
 
     std::vector<GroupCombinationIndex> pulsingGroupCombs;
 
@@ -498,8 +564,24 @@ void GroupManager::updatePulseEntries() {
             continue;
 
         pulseEntries.push_back(PulseEntry::endIndicator());
+
+        if (groupStates[groupCombIndex].pulseIndex == pulseIndex)
+            continue;
+
         groupStates[groupCombIndex].pulseIndex = pulseIndex;
+        stateDirty = true;
     }
+
+    // A lone end indicator means nothing pulses, which is the case for most
+    // frames. Its contents never change, so the buffer can keep its value.
+    bool nothingPulses = pulseEntries.size() == 1;
+
+    if (nothingPulses && pulseEntryBuffer && pulseEntryBufferHadNoPulses) {
+        pulseEntryBufferHadNoPulses = true;
+        return;
+    }
+
+    pulseEntryBufferHadNoPulses = nothingPulses;
 
     pulseEntryBufferEnsureSize(pulseEntries.size() * sizeof(PulseEntry));
     if (!pulseEntryBuffer)

@@ -88,17 +88,50 @@ void WorkGroupScheduler::addSprite(
     });
 }
 
-SortedObjectBatch* WorkGroupScheduler::fetchSortedBatchForBlendStates(const ColorChannelBlendStates& blendStates) {
+SortedObjectBatch* WorkGroupScheduler::fetchSortedBatchForBlendStates(
+    const ColorChannelBlendStates& blendStates,
+    SortedObjectBatch* inUseBatch
+) {
     cleanUpFinishedJobs();
     
     {
         std::scoped_lock lock(mutex);
-        if (sortedBatchesPerBlendStates.contains(blendStates))
-            return sortedBatchesPerBlendStates[blendStates].get();
+
+        auto it = sortedBatchesPerBlendStates.find(blendStates);
+
+        if (it != sortedBatchesPerBlendStates.end()) {
+            it->second->lastUsedTime = getTime();
+            return it->second.get();
+        }
     }
 
-    addGenerationJob(blendStates);
+    addGenerationJob(blendStates, inUseBatch);
     return nullptr;
+}
+
+static constexpr usize MAX_CACHED_SORTED_BATCHES = 6;
+
+void WorkGroupScheduler::trimSortedBatchCacheLocked(SortedObjectBatch* inUseBatch) {
+    while (sortedBatchesPerBlendStates.size() > MAX_CACHED_SORTED_BATCHES) {
+        auto victim = sortedBatchesPerBlendStates.end();
+        u64 oldest = ~0ull;
+
+        for (auto it = sortedBatchesPerBlendStates.begin(); it != sortedBatchesPerBlendStates.end(); ++it) {
+            if (it->second.get() == inUseBatch)
+                continue;
+
+            if (it->second->lastUsedTime > oldest)
+                continue;
+
+            oldest = it->second->lastUsedTime;
+            victim = it;
+        }
+
+        if (victim == sortedBatchesPerBlendStates.end())
+            return;
+
+        sortedBatchesPerBlendStates.erase(victim);
+    }
 }
 
 void WorkGroupScheduler::cleanUpFinishedJobs() {
@@ -122,8 +155,11 @@ void WorkGroupScheduler::cleanUpFinishedJobs() {
     }
 }
 
-void WorkGroupScheduler::addGenerationJob(const ColorChannelBlendStates& blendStates) {
+void WorkGroupScheduler::addGenerationJob(const ColorChannelBlendStates& blendStates, SortedObjectBatch* inUseBatch) {
     std::scoped_lock lock(mutex);
+
+    trimSortedBatchCacheLocked(inUseBatch);
+
     if (currentGenerationJobs.contains(blendStates))
         return;
 

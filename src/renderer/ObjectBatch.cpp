@@ -261,6 +261,8 @@ void ObjectBatch::draw(const LayerKey& layer) {
     if (!spriteSheet)
         return;
 
+    ScopedFrameTimer timer(renderer.getFrameTiming().draw);
+
     const auto& range = sortedBatch->workGroupRangePerLayerKey[layer];
 
     auto shader = renderer.getDrawingShader();
@@ -293,16 +295,50 @@ void ObjectBatch::predraw() {
 
     const auto& blendStates = renderer.getColorChannelBlendStates();
 
-    // This uses a different thread to avoid a lag spike
-    auto newSortedBatch = workGroupScheduler.fetchSortedBatchForBlendStates(blendStates);
-    if (newSortedBatch)
-        sortedBatch = newSortedBatch;
-    else if (!sortedBatch) {
-        workGroupScheduler.waitForJobs();
-        sortedBatch = workGroupScheduler.fetchSortedBatchForBlendStates(blendStates);
-        if (!sortedBatch)
-            return;
+    if (blendStatesSeen && blendStates == lastSeenBlendStates)
+        stableBlendStateFrames++;
+    else {
+        lastSeenBlendStates = blendStates;
+        blendStatesSeen = true;
+        stableBlendStateFrames = 0;
     }
+
+    bool needsNewBatch = !sortedBatch || !haveBatchForRequestedStates || !(blendStates == requestedBlendStates);
+
+    if (needsNewBatch) {
+        // Without a batch at all there is nothing to draw, so request one
+        // right away. Otherwise wait until the blend state is stable so a
+        // state that only lasts a frame or two never re-sorts the whole level.
+        bool mayRegenerate = !sortedBatch || stableBlendStateFrames >= REGENERATE_AFTER_STABLE_FRAMES;
+
+        if (mayRegenerate) {
+            ScopedFrameTimer timer(renderer.getFrameTiming().sortedBatch);
+
+            // This uses a different thread to avoid a lag spike
+            auto newSortedBatch = workGroupScheduler.fetchSortedBatchForBlendStates(blendStates, sortedBatch);
+
+            if (newSortedBatch) {
+                if (newSortedBatch != sortedBatch)
+                    renderer.getFrameTiming().countSortedBatchGeneration();
+
+                sortedBatch = newSortedBatch;
+                requestedBlendStates = blendStates;
+                haveBatchForRequestedStates = true;
+            } else if (!sortedBatch) {
+                workGroupScheduler.waitForJobs();
+                sortedBatch = workGroupScheduler.fetchSortedBatchForBlendStates(blendStates, nullptr);
+
+                if (!sortedBatch)
+                    return;
+
+                requestedBlendStates = blendStates;
+                haveBatchForRequestedStates = true;
+            }
+        }
+    }
+
+    if (!sortedBatch)
+        return;
 
     Shader* computeShader = renderer.getCullingComputeShader();
     if (!computeShader)

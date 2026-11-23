@@ -1,9 +1,15 @@
-# Bismuth
-Rendering optimization mod with the goal of fully
-rewriting the rendering side of Geometry Dash
-for maximum performance.
+<p align="center">
+  <img src="logo.png" alt="Bismuth logo" width="180"/>
+</p>
 
-Currently experimental
+<h1 align="center">Bismuth</h1>
+
+<p align="center">
+Rendering optimization mod with the goal of fully rewriting the rendering side
+of Geometry Dash for maximum performance.
+</p>
+
+<p align="center"><b>Currently experimental</b></p>
 
 ## Hitboxes and cheat compatibility
 
@@ -16,6 +22,21 @@ including objects moved or rotated by triggers.
 
 Hitbox viewers do not turn the renderer off - if they did, you would get
 vanilla FPS while they are on.
+
+## Frame timing
+
+Bismuth logs an average timing breakdown of every rendered frame to the Geode
+log every 5 seconds:
+
+```
+Frame timing: 1042 FPS (0.96 ms/frame) | uniforms 3 us | color channels 4 us
+ | group states 6 us (alpha 3, pulse 1, upload 2) | culling 11 us (sorted batch 0, 0 regen)
+ | draw 48 us | other 888 us
+```
+
+`other` is everything the renderer does not measure (game update, UI, buffer
+swap). Turn it off with the *Log frame timing* setting if you don't want the
+lines in your log.
 
 ## Trigger support
 
@@ -83,8 +104,6 @@ Pushing to this repository also builds a Windows `.geode` through the
 GitHub Actions workflow in `.github/workflows/multi-platform.yml`.
 
 You can try the latest builds from the discord server: https://discord.gg/MDbQt3w8HC
-
-<img src="logo.png" alt="Bismuth logo" width="100"/>
 
 ## License
 

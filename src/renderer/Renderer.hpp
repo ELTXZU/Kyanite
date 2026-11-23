@@ -9,6 +9,7 @@
 #include "Shader.hpp"
 #include "DebugText.hpp"
 #include "DifferenceMode.hpp"
+#include "FrameTiming.hpp"
 #include "GroupManager.hpp"
 #include "ObjectBatchNode.hpp"
 #include <unordered_map>
@@ -109,6 +110,8 @@ public:
 
     inline bool isDebugToolsEnabled() const { return debugToolsEnabled; }
 
+    inline FrameTiming& getFrameTiming() { return frameTiming; }
+
     inline bool isPaused() {
         return layer->m_isPaused;
     }
@@ -150,6 +153,8 @@ private:
     bool debugToolsEnabled = false;
     bool disableObjectPulse = false;
 
+    FrameTiming frameTiming;
+
     u64 rendererStartTime = 0;
 
     std::unordered_map<GameObject*, usize> objectIndicies;
@@ -178,6 +183,7 @@ private:
 
     ColorChannelBuffer* colorChannelBuffer;
     UPtr<Buffer> colorChannelBufferObject = nullptr;
+    bool colorChannelBufferInitialized = false;
 
     UPtr<Buffer> objectInfoBuffer = nullptr;
 

@@ -218,6 +218,24 @@ private:
     std::vector<GroupCombinationIndex> firstGroupIndexPerTransformIndex;
 
     /*
+        Group ids that appear in at least one alpha combination. Only those
+        can change the opacity of a group combination, so the per frame alpha
+        update only has to look at these instead of every group id in the level.
+    */
+    std::vector<GroupID> alphaUpdateGroupIds;
+
+    bool alphaValuesInitialized = false;
+
+    /*
+        Set whenever the cpu side group state changed, so the buffer is only
+        uploaded on the frames where something actually changed.
+    */
+    bool stateDirty = true;
+
+    // True when the last pulse entry upload contained no pulse actions at all.
+    bool pulseEntryBufferHadNoPulses = false;
+
+    /*
         This is a vector with the index being a group id and the value being
         an array of all group combination indicies it belongs to.
 

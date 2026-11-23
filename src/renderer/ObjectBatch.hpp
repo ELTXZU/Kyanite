@@ -100,8 +100,21 @@ private:
 
     GPUTimer cullingComputeShaderTimer { "Culling compute shader time" };
 
+    /*
+        A blend state combination that only lasts for a frame or two is not
+        worth sorting the whole level for, and looking it up on every frame is
+        wasted work while nothing changes.
+    */
+    static constexpr u32 REGENERATE_AFTER_STABLE_FRAMES = 3;
+
     WorkGroupScheduler workGroupScheduler;
     SortedObjectBatch* sortedBatch = nullptr;
+
+    ColorChannelBlendStates requestedBlendStates {};
+    ColorChannelBlendStates lastSeenBlendStates {};
+    u32 stableBlendStateFrames = 0;
+    bool haveBatchForRequestedStates = false;
+    bool blendStatesSeen = false;
 
     usize spriteCount = 0;
 

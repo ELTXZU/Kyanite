@@ -5,7 +5,7 @@
     },
     "id": "iliashdz.bismuth",
     "name": "Bismuth (experimental)",
-    "version": "v0.2.2-alpha",
+    "version": "v0.2.3-alpha",
     "developer": "IliasHDZ",
     "description": "Rendering optimization mod",
     "dependencies": {
@@ -34,6 +34,12 @@
             "name": "Bismuth enabled",
             "type": "bool",
             "default": true
+        },
+        "frame_timing": {
+            "name": "Log frame timing",
+            "type": "bool",
+            "default": true,
+            "description": "Writes an average timing breakdown of every rendered frame to the Geode log every 5 seconds (FPS, group state updates, culling, drawing, ...). Useful to see what is left to optimize."
         },
         "gpu_core_count": {
             "name": "GPU core count",

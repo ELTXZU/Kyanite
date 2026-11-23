@@ -1,3 +1,19 @@
+# 0.2.3-alpha
+- Added a frame timing breakdown to the log (every 5 seconds): FPS, uniforms,
+  color channels, group state updates (alpha, pulse, upload), culling, sorted
+  batch regeneration and drawing. Can be turned off with the "Log frame timing"
+  setting
+- The group state buffer is only uploaded when a group transform, opacity or
+  pulse index actually changed instead of on every frame
+- The alpha pass only queries the group ids that appear in an alpha combination
+  instead of every group id in the level, and skips the recompute when no alpha
+  value changed
+- The color channel buffer is only uploaded when a color actually changed
+- Pulse entry buffers are not re-uploaded while nothing pulses
+- Sorted batches are only looked up when the blend state changes, a blend state
+  has to stay stable for a few frames before the level is re-sorted for it, and
+  old sorted batches are dropped from the cache so vram usage stays bounded
+
 # 0.2.2-alpha
 - Fixed the object culling compute shader using a single GPU invocation per
   work group: every work group looped over its ~5000 sprites on one thread, so
