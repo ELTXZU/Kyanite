@@ -11,16 +11,16 @@ public:
     }
 
     GEODE_INLINE void allocate() {
-        BISMUTH_ASSERT(vector.size() == 0);
+        KYANITE_ASSERT(vector.size() == 0);
         vector.resize(range.length());
     }
 
     GEODE_INLINE T& at(i32 key) {
-        BISMUTH_ASSERT(range.contains(key));
+        KYANITE_ASSERT(range.contains(key));
         return vector[key - range.min];
     }
     GEODE_INLINE const T& at(i32 key) const {
-        BISMUTH_ASSERT(range.contains(key));
+        KYANITE_ASSERT(range.contains(key));
         return vector[key - range.min];
     }
 

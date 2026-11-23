@@ -54,9 +54,9 @@ public:
 /*
     These trigger types change objects in ways that can't be expressed as a
     per-group state (they animate or transform individual objects over time).
-    Levels that contain them are still rendered by Bismuth; the objects these
+    Levels that contain them are still rendered by Kyanite; the objects these
     triggers affect just keep their initial transform. The renderer is never
-    disabled for a whole level because of them, otherwise Bismuth would do
+    disabled for a whole level because of them, otherwise Kyanite would do
     nothing at all on most modern levels.
 */
 static bool levelUsesUnsupportedTriggers(cocos2d::CCArray* objects) {
@@ -144,7 +144,7 @@ bool Renderer::initInternal(PlayLayer* layer, CCArray* levelObjects) {
     auto size = CCDirector::get()->getWinSize();
 
     if (!Mod::get()->getSettingValue<bool>("enabled")) {
-        log::warn("Bismuth is disabled in the mod settings, not creating a renderer");
+        log::warn("Kyanite is disabled in the mod settings, not creating a renderer");
         return false;
     }
 
@@ -347,7 +347,7 @@ bool Renderer::initInternal(PlayLayer* layer, CCArray* levelObjects) {
         )->show();
     }
 
-    setID("iliashdz.bismuth/renderer");
+    setID("iliashdz.kyanite/renderer");
 
     log::info("Renderer initialized");
     return true;
@@ -636,12 +636,12 @@ void Renderer::updateDebugText() {
         if (differenceModeEnabled) {
             text += "Difference mode is enabled (F9 to disable)\n";
         } else
-            text += "Bismuth renderer is disabled (F8 to enable)\n";
+            text += "Kyanite renderer is disabled (F8 to enable)\n";
     } else {
         if (debugTextEnabled) {
             auto screenSize = CCDirector::get()->getWinSizeInPixels();
 
-            text += fmt::format("Bismuth renderer {}\n", Mod::get()->getVersion().toVString());
+            text += fmt::format("Kyanite renderer {}\n", Mod::get()->getVersion().toVString());
             text += fmt::format("OpenGL {}\n", (const char*)glGetString(GL_VERSION));
             text += fmt::format("{}\n", (const char*)glGetString(GL_RENDERER));
             text += "\n";

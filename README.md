@@ -1,32 +1,50 @@
 <p align="center">
-  <img src="logo.png" alt="Bismuth logo" width="180"/>
+  <img src="logo.png" alt="Kyanite" width="120">
 </p>
 
-<h1 align="center">Bismuth</h1>
+<h1 align="center">Kyanite</h1>
 
-<p align="center">
-Rendering optimization mod with the goal of fully rewriting the rendering side
-of Geometry Dash for maximum performance.
-</p>
+<p align="center"><b>A GPU-driven object renderer for Geometry Dash.</b></p>
 
-<p align="center"><b>Currently experimental</b></p>
+Kyanite replaces the renderer Geometry Dash uses for level objects. Group
+transforms, triggers and visibility are resolved on the GPU every frame instead
+of on the CPU, so levels that are CPU bound in vanilla keep their framerate.
+Shaders, UI, particles and anything that isn't a level object are untouched.
 
-## Hitboxes and cheat compatibility
+A fork of [Bismuth](https://github.com/IliasHDZ/Bismuth) by IliasHDZ.
 
-Hitbox viewers (MegaHack's show hitboxes, GD Mega Overlay, GD's own debug draw
-and hitboxes on death) draw the game's own hitbox rectangles. Bismuth keeps
-rendering the level with its optimizations on while they are active: the
-objects on screen are activated invisibly so the game can compute their
-hitboxes, and everything else stays culled. Hitboxes line up with what you see,
-including objects moved or rotated by triggers.
+[Status](#status) · [Numbers](#numbers) · [How it works](#how-it-works) ·
+[Settings](#settings) · [Compatibility](#compatibility) ·
+[Building](#building) · [Credits](#credits) · [Discord](https://discord.gg/B6H6ZVJx9C)
 
-Hitbox viewers do not turn the renderer off - if they did, you would get
-vanilla FPS while they are on.
+## Status
 
-## Frame timing
+Kyanite is alpha software. Levels built from group triggers render correctly.
+Levels that use per-object effects still render, but the objects those effects
+move stay where they started.
 
-Bismuth logs an average timing breakdown of every rendered frame to the Geode
-log every 5 seconds:
+| Feature | Status |
+|---|---|
+| Rendering levels (GD 2.2081, Geode 5.11.2) | ✅ |
+| Move, rotate, follow, toggle, alpha and pulse triggers | ✅ |
+| Color channels, HSV, object pulse, blending modes | ✅ |
+| Hitbox viewers (MegaHack, GD Mega Overlay, debug draw, hitboxes on death) | ✅ |
+| Scale trigger (2067), area/enter effects (3006+), advanced follow, keyframes | ⚠️ levels render, affected objects don't animate |
+| 2.2-only visuals (platformer camera and friends) | ❌ |
+| Overdraw view, in-game toggle, difference mode | ✅ under *Debug tools* |
+| Intel integrated GPUs | ⚠️ often slower than vanilla |
+
+## Numbers
+
+One test level, measured in game: 273,266 objects, 368,931 sprites, 943 group
+combinations, 632 transform combinations, culled by 68 compute work groups.
+
+| Build | FPS |
+|---|---|
+| Peaceful, before the culling fix | below 40 |
+| Peaceful, current build | above 500 |
+
+Every 5 seconds the mod logs where the frame went. One line looks like this:
 
 ```
 Frame timing: 1042 FPS (0.96 ms/frame) | uniforms 3 us | color channels 4 us
@@ -34,40 +52,74 @@ Frame timing: 1042 FPS (0.96 ms/frame) | uniforms 3 us | color channels 4 us
  | draw 48 us | other 888 us
 ```
 
-`other` is everything the renderer does not measure (game update, UI, buffer
-swap). Turn it off with the *Log frame timing* setting if you don't want the
-lines in your log.
+`uniforms`, `color channels`, `group states`, `culling` and `draw` are Kyanite's
+own cost. `other` is the rest of the frame: the game's update, UI and buffer
+swap. If `other` is the only large number, nothing in Kyanite is holding you
+back.
 
-## Trigger support
+## How it works
 
-Group based triggers are applied on the GPU: move, rotate, follow, toggle,
-alpha and pulse. Every other trigger keeps working because it doesn't change
-how objects are drawn.
+| Piece | What it does | Where |
+|---|---|---|
+| Sprite meshes | Each sprite sheet and blend combination becomes one mesh; a level object's sprites are a range in its index buffer | `src/renderer/SpriteMeshDictionary.cpp` |
+| Object buffers | Sprites are drawn instanced and fetch their object by id, so a frame no longer rebuilds per-object vertices | `src/renderer/Renderer.cpp` |
+| Group state | Move, rotate, follow, toggle, alpha and pulse are kept per group combination and uploaded only when a value changes | `src/renderer/GroupManager.cpp` |
+| Culling | A compute shader walks every sprite range, drops what is off screen and writes the draw order with a shared-memory prefix sum, 64 invocations per work group | `resources/shaders/objectCulling.comp` |
+| Sorted batches | One index order per blend state (1085 states in GD). Rebuilt only when a state stays stable for a few frames, capped in the cache | `src/renderer/ObjectBatch.cpp`, `src/renderer/WorkGroupScheduler.cpp` |
+| Hitboxes | Objects on screen are activated invisibly so the game computes their hitboxes normally | `src/renderer/hooks.cpp` |
 
-Per-object effects are different: the Scale trigger (2067), the Area and Enter
-effects (3006+), Advanced Follow and keyframes move or resize every object
-individually, which a per-group state can't describe. Bismuth keeps rendering
-these levels (so you still get the speedup), but objects touched by those
-triggers keep their initial transform instead of animating. Giving those
-effects a per-object transform buffer is the next step (see TODO.md).
+The long version, with diagrams of how GD builds sprite batches and what the
+culling pass does, is in [TechnicalExplanation.md](TechnicalExplanation.md).
 
-Objects that come from a sprite sheet the renderer has no texture for are
-skipped by the renderer; the rest of the level is still rendered normally.
+## Settings
 
-## Supported versions
+| Setting | Default | What it does |
+|---|---|---|
+| Kyanite enabled | on | Master switch. Off draws levels with GD's own renderer |
+| Log frame timing | on | The 5 second frame breakdown above |
+| GPU core count | `0` | Work groups used by the culling pass. `0` detects it; set it by hand if detection fails |
+| Debug tools | off | F8 toggles the renderer, F9 difference mode, F7 selects objects right of the screen in the editor. Turns the optimizations off |
+| Persistently mapped buffers | off | Buffer writes through a persistent mapping. Buggy on many drivers; sometimes helps on integrated GPUs |
+| Disable object pulse | off | Stops objects pulsing to the song |
+
+## Compatibility
+
+### Hitboxes
+
+Hitbox viewers draw the game's own hitbox rectangles. Kyanite keeps rendering
+the level with its optimizations while they are open: objects on screen are
+activated invisibly so the game can compute their hitboxes, and everything off
+screen stays culled. Hitboxes line up with what you see, including objects
+moved or rotated by triggers.
+
+### Versions
 
 The mod is built for **Geometry Dash 2.2081** with **Geode 5.11.2**. The source
-also builds unchanged against Geode 6 / GD 2.2091 - set `geode` to
-`6.0.0-beta.1` and `gd.win` to `2.2091` in `mod.json` and build with the 6.x
-SDK and its bindings; the only version difference (`PlayLayer::init`
-arguments) is handled by a `GEODE_COMP_GD_VERSION` check.
+is written to also build for **2.2091** with the **6.x SDK**: set `geode` to
+`6.0.0-beta.1` and `gd.win` to `2.2091` in `mod.json`, then build with that SDK
+and its bindings. The only version difference (`PlayLayer::init` arguments) is
+behind a `GEODE_COMP_GD_VERSION` check. Geode rejects a `.geode` built for the
+other version, so use the build that matches your loader.
 
-Both builds are produced from this source: use the `.geode` matching your
-Geode version, Geode will refuse the other one.
+### Triggers and effects
+
+Group based triggers run on the GPU: move, rotate, follow, toggle, alpha and
+pulse. Every other trigger keeps working, because it doesn't change how objects
+are drawn.
+
+Per-object effects are different. The Scale trigger, Area and Enter effects,
+Advanced Follow and keyframes move or resize each object on its own, which a
+per-group state can't describe. Levels that use them still render with the
+speedup, but the objects those triggers touch keep their initial transform.
+Giving those effects a per-object transform buffer is the next piece of work
+(see [TODO.md](TODO.md)).
+
+Objects from a sprite sheet the renderer has no mesh for are skipped; the rest
+of the level renders normally.
 
 ## Building
 
-The mod is built with the [Geode SDK](https://docs.geode-sdk.org/).
+Kyanite is built with the [Geode SDK](https://docs.geode-sdk.org/).
 
 On Windows:
 
@@ -82,8 +134,8 @@ geode sdk install-linux
 geode build -p windows
 ```
 
-If the SDK helper can't download the Windows SDK, you can wire the toolchain up
-by hand (this is how the current release was built):
+If the SDK helper can't download the Windows SDK, the toolchain can be wired up
+by hand:
 
 1. `xwin --accept-license --arch x86_64 splat --output ./xwin-splat` (xwin 0.10+)
 2. LLVM/clang 19 or newer, with `clang-cl`, `lld-link`, `llvm-lib`, `llvm-mt`,
@@ -100,35 +152,30 @@ cmake -S . -B build-win -G Ninja \
 cmake --build build-win
 ```
 
-Pushing to this repository also builds a Windows `.geode` through the
-GitHub Actions workflow in `.github/workflows/multi-platform.yml`.
+Pushing to this repository also builds a Windows `.geode` through the GitHub
+Actions workflow in `.github/workflows/multi-platform.yml`.
 
-You can try the latest builds from the discord server: https://discord.gg/MDbQt3w8HC
+Nightly builds are posted in the Discord server: https://discord.gg/MDbQt3w8HC
+
+## Credits
+
+- [IliasHDZ](https://github.com/IliasHDZ): original author of Bismuth, which
+  this fork is based on.
+- Saryu: the original mod icon.
+- [glm](https://github.com/g-truc/glm), [glslang](https://github.com/KhronosGroup/glslang)
+  and [OpenCL-Headers](https://github.com/KhronosGroup/OpenCL-Headers): the
+  libraries the renderer builds on.
+- [Geode SDK](https://github.com/geode-sdk/geode): the mod loader.
 
 ## License
 
-Bismuth - Optimization mod for Geometry Dash
-
+Kyanite - GPU-driven renderer for Geometry Dash
 Copyright (C) 2026 IliasHDZ
 
-If the program has been modified using AI, you CANNOT DISTRIBUTE
-a binary of the modified program.
+If the program has been modified using AI, you CANNOT DISTRIBUTE a binary of
+the modified program.
 
-This project also CANNOT BE USED UNDER ANY CIRCUMSTANCES TO
-FACILITATE OR ADVANCE GEOMETRY DASH LEVEL GENERATION OR
-MODIFICATION USING GENERATIVE AI.
+This project also CANNOT BE USED UNDER ANY CIRCUMSTANCES TO FACILITATE OR
+ADVANCE GEOMETRY DASH LEVEL GENERATION OR MODIFICATION USING GENERATIVE AI.
 
-Except for the above clauses, the GPL v3 license applies:
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Except for the above clauses, the GPL v3 license applies. See [LICENSE](LICENSE).

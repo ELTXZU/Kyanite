@@ -92,7 +92,7 @@ struct LayerKey {
     }
 
     inline std::string asID() const {
-        return fmt::format("iliashdz.bismuth/{}-{}", zLayerAsString(zlayer), spriteSheetAsString(spriteSheet)) + (blending ? "-blending" : "");
+        return fmt::format("iliashdz.kyanite/{}-{}", zLayerAsString(zlayer), spriteSheetAsString(spriteSheet)) + (blending ? "-blending" : "");
     }
 
     static inline ZLayer getNormalObjectZLayer(GameObject* object) {

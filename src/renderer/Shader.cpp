@@ -177,7 +177,7 @@ static UPtr<glslang::TShader> compileShader(EShLanguage stage, std::string code,
     return shader;
 }
 
-static std::optional<std::string> preprocessShaderFile(const bismuth::ResourcePath& path, std::string preCode, EShLanguage stage) {
+static std::optional<std::string> preprocessShaderFile(const kyanite::ResourcePath& path, std::string preCode, EShLanguage stage) {
     auto source = readResourceFile(path);
     if (!source) {
         geode::log::error("could not find shader at path: {}", path);
@@ -366,8 +366,8 @@ static inline std::string generatePreCode(std::map<std::string, std::string> mac
 }
 
 UPtr<Shader> Shader::create(
-    const bismuth::ResourcePath& vertexPath,
-    const bismuth::ResourcePath& fragmentPath,
+    const kyanite::ResourcePath& vertexPath,
+    const kyanite::ResourcePath& fragmentPath,
     std::map<std::string, std::string> macroVariables
 ) {
     auto preCode = generatePreCode(macroVariables);
@@ -419,7 +419,7 @@ UPtr<Shader> Shader::create(
     return ret;
 }
 
-UPtr<Shader> Shader::createCompute(const bismuth::ResourcePath& path, std::map<std::string, std::string> macroVariables) {
+UPtr<Shader> Shader::createCompute(const kyanite::ResourcePath& path, std::map<std::string, std::string> macroVariables) {
     auto preCode = generatePreCode(macroVariables);
 
     /*

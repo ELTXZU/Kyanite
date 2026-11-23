@@ -98,7 +98,7 @@ class $modify(CommonCCDirector, CCDirector) {
     }
 };
 
-std::optional<std::string> readResourceFile(const bismuth::ResourcePath& path) {
+std::optional<std::string> readResourceFile(const kyanite::ResourcePath& path) {
     std::ifstream t((Mod::get()->getResourcesDir() / path).string());
     if (!t.is_open())
         return std::nullopt;

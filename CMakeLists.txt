@@ -8,7 +8,7 @@ else()
 endif()
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(Bismuth VERSION 1.0.0)
+project(Kyanite VERSION 1.0.0)
 
 # I want to use `geode build` with clang but this is the only way to do it :(
 message(STATUS "Found Geode: $ENV{CMAKE_C_COMPILER}")

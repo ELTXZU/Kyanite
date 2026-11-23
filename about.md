@@ -1,41 +1,33 @@
-# Bismuth
+# Kyanite
 
-<cr>**WARNING: This mod is still in the experimental stage and
-is very buggy! Alot of levels will not display correctly. This mod
-should be percieved as something to experiment with rather than
-something to use in actual play.**</c>
+<cr>**Alpha.** Levels that use per-object effects (Scale trigger, area/enter
+effects, advanced follow, keyframes) render, but the objects those effects move
+stay at their start transform.</c>
 
-A rendering optimization mod that does alot of the trigger
-and visibility calculations on the GPU. Bismuth completely
-replaces and recreates GD's object rendering from scratch.
+Kyanite draws level objects on the GPU. Group transforms, triggers and
+visibility are resolved per group in a compute shader every frame, off-screen
+objects are culled before they are drawn, and a level is no longer rebuilt into
+per-object vertices each frame. Shaders, UI and particles are untouched.
 
-Bismuth is **especially** effective with high object counts
-and excessive move/rotate trigger logic.
+Group triggers run on the GPU: move, rotate, follow, toggle, alpha and pulse.
+Hitbox viewers keep working without turning the optimizations off.
 
-Currently, this mod renders 2.1 levels best. Newer 2.2
-features and visual quirks haven't been implemented yet.
+Kyanite is **especially** effective with high object counts and excessive
+move/rotate trigger logic. It works best on medium to high-end GPUs; on low-end
+integrated GPUs, **Intel ones in particular**, the culling gain is smaller and
+the mod can be **slower** than vanilla.
 
-Levels with great results:
+Levels with good results:
 - Peaceful
 - A daydream journey
 - Departure
 - Slaughterhouse
 
-Bismuth currently works best on medium to high-end GPUs.
+Debug tools (off by default) add **F8** to toggle the renderer in game, **F9**
+for difference mode and **F7** to select every object right of the screen in the
+editor. **F4** toggles overdraw view, a view for creators to see how many times
+a pixel is drawn; Kyanite is unstable enough that overdraw view is best used
+with the mod switched off in its settings.
 
-For low-end GPUs like many **Intel GPUs**, the advantages
-of Bismuth's culling system are way less and in fact can
-be **slower** than vanilla. They may also crash sometimes!
-
-This mod features **overdraw view**! A helpful feature for
-creators to visualize overdraw. Since Bismuth is still unstable,
-it is recommended to **disable Bismuth** in the **settings window**
-when using overdraw view for creating. Overdraw view can be enabled
-by pressing **F4** in-game or in the editor.
-
-I am currently not accepting bugfixes as there is already alot
-of broken stuff to be fixed first.
-
-Join the Discord server for the latest nightly builds: https://discord.gg/B6H6ZVJx9C
-
-Icon created by Saryu
+Prefer the fork's issue tracker for bugs in this build. Join the Discord server
+for nightly builds: https://discord.gg/B6H6ZVJx9C

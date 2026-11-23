@@ -1,3 +1,12 @@
+# 0.3.0-alpha
+- Renamed the mod to Kyanite, mod id `iliashdz.kyanite`. Settings, log messages,
+  batch ids and resource paths use the new name. The old `iliashdz.bismuth.geode`
+  has to be removed from your mods folder, Geode treats the two ids as different
+  mods and would load both renderers
+- New logo
+- README rewritten with the current feature status, the measured numbers, how
+  the renderer is put together and every setting
+
 # 0.2.3-alpha
 - Added a frame timing breakdown to the log (every 5 seconds): FPS, uniforms,
   color channels, group state updates (alpha, pulse, upload), culling, sorted

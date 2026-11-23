@@ -1,3 +1,3 @@
-Rename-Item -Path "build\iliashdz.bismuth.geode" -NewName "iliashdz.bismuth.zip"
-Compress-Archive -Path "build\iliashdz.bismuth.pdb" -Update -DestinationPath "build\iliashdz.bismuth.zip"
-Rename-Item -Path "build\iliashdz.bismuth.zip" -NewName "iliashdz.bismuth.geode"
+Rename-Item -Path "build\iliashdz.kyanite.geode" -NewName "iliashdz.kyanite.zip"
+Compress-Archive -Path "build\iliashdz.kyanite.pdb" -Update -DestinationPath "build\iliashdz.kyanite.zip"
+Rename-Item -Path "build\iliashdz.kyanite.zip" -NewName "iliashdz.kyanite.geode"

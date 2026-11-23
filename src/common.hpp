@@ -16,12 +16,12 @@
     directly. This keeps the renderer source building against both.
 */
 #if __has_include(<asp/fs/Path.hpp>)
-namespace bismuth {
+namespace kyanite {
     using ResourcePath = asp::fs::Path;
 }
 #else
 #include <filesystem>
-namespace bismuth {
+namespace kyanite {
     using ResourcePath = std::filesystem::path;
 }
 #endif
@@ -66,8 +66,8 @@ using vec4 = glm::vec4;
 
 namespace fs = std::filesystem;
 
-// #define BISMUTH_ASSERT(COND) { if (!(COND)) geode::log::error("{}:{}: Assertion failed: {}", fs::path(__FILE__).filename(), __LINE__, #COND); }
-#define BISMUTH_ASSERT(COND)
+// #define KYANITE_ASSERT(COND) { if (!(COND)) geode::log::error("{}:{}: Assertion failed: {}", fs::path(__FILE__).filename(), __LINE__, #COND); }
+#define KYANITE_ASSERT(COND)
 
 using usize = uintptr_t;
 using isize = intptr_t;
@@ -128,7 +128,7 @@ void glObjectLabel(GLenum id, GLuint name, GLsizei length, const char* label);
 */
 void drawFullscreenQuad();
 
-std::optional<std::string> readResourceFile(const bismuth::ResourcePath& path);
+std::optional<std::string> readResourceFile(const kyanite::ResourcePath& path);
 
 inline glm::vec2 getClockwise(const glm::vec2& v) {
     return { v.y, -v.x };

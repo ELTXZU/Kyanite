@@ -45,7 +45,7 @@ void DifferenceMode::drawSceneHook() {
     kmGLPopMatrix();
 
     renderer.setEnabled(true);
-    glBindFramebuffer(GL_FRAMEBUFFER, bismuthFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, kyaniteFramebuffer);
     glClear(GL_COLOR_BUFFER_BIT);
     kmGLPushMatrix();
     scene->visit();
@@ -58,7 +58,7 @@ void DifferenceMode::drawSceneHook() {
 
     shader->use();
     shader->setTexture(shader->location("u_vanillaFrame"), 0, vanillaTexture);
-    shader->setTexture(shader->location("u_bismuthFrame"), 1, bismuthTexture);
+    shader->setTexture(shader->location("u_kyaniteFrame"), 1, kyaniteTexture);
     shader->setFloat("u_intensity", intensity);
     shader->setFloat("u_backdropIntensity", backdropIntensity);
 
@@ -100,8 +100,8 @@ void DifferenceMode::prepare(u32 width, u32 height) {
 
     vanillaTexture     = createFramebufferTexture(width, height);
     vanillaFramebuffer = createColorFramebuffer(vanillaTexture);
-    bismuthTexture     = createFramebufferTexture(width, height);
-    bismuthFramebuffer = createColorFramebuffer(bismuthTexture);
+    kyaniteTexture     = createFramebufferTexture(width, height);
+    kyaniteFramebuffer = createColorFramebuffer(kyaniteTexture);
 
     if (!shader)
         shader = Shader::create("fullscreen.vert", "differenceMode.frag");
@@ -109,13 +109,13 @@ void DifferenceMode::prepare(u32 width, u32 height) {
 
 void DifferenceMode::destroyFramebuffers() {
     if (vanillaFramebuffer) glDeleteFramebuffers(1, &vanillaFramebuffer);
-    if (bismuthFramebuffer) glDeleteFramebuffers(1, &bismuthFramebuffer);
+    if (kyaniteFramebuffer) glDeleteFramebuffers(1, &kyaniteFramebuffer);
     if (vanillaTexture) glDeleteTextures(1, &vanillaTexture);
-    if (bismuthTexture) glDeleteTextures(1, &bismuthTexture);
+    if (kyaniteTexture) glDeleteTextures(1, &kyaniteTexture);
     vanillaFramebuffer = 0;
-    bismuthFramebuffer = 0;
+    kyaniteFramebuffer = 0;
     vanillaTexture = 0;
-    bismuthTexture = 0;
+    kyaniteTexture = 0;
 }
 
 #include <Geode/modify/CCDirector.hpp>

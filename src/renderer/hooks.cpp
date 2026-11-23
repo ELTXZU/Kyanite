@@ -358,7 +358,7 @@ public:
 
             if (version.find("reviangle") != std::string::npos) {
                 FLAlertLayer::create(
-                    "Bismuth error!",
+                    "Kyanite error!",
                     "You are using ReviANGLE which does not supply the required OpenGL version 4.3\n"
                     "Disable ReviANGLE and try again.",
                     "Ok"
@@ -367,7 +367,7 @@ public:
             }
 
             FLAlertLayer::create(
-                "Bismuth error!",
+                "Kyanite error!",
                 "Your GPU does not support the required OpenGL 4.3!\n"
                 "Make sure your GPU drivers are updated.",
                 "Ok"
@@ -378,17 +378,17 @@ public:
         if (getGPUCoreCount() == -1) {
             FLAlertLayer::create(
                 "No core count!",
-                "Bismuth could not find the core count of your GPU!\n"
+                "Kyanite could not find the core count of your GPU!\n"
                 "This is likely due to your GPU being AMD which is a hassle to get the core count of.\n"
-                "Make sure you search up your *GPU* core count, go to Bismuth settings, and set it there.\n",
+                "Make sure you search up your *GPU* core count, go to Kyanite settings, and set it there.\n",
                 "Ok"
             )->show();
         }
 
         if (isIntelGPU()) {
             FLAlertLayer::create(
-                "Bismuth warning!",
-                "Bismuth is unstable and likely very slow on Intel integrated GPUs!\n",
+                "Kyanite warning!",
+                "Kyanite is unstable and likely very slow on Intel integrated GPUs!\n",
                 "Ok"
             )->show();
         }
@@ -473,7 +473,7 @@ DECLARE_HOTKEY(KEY_F7, {
     editor->m_editorUI->updateObjectInfoLabel();
 
     Notification::create(
-        "Bismuth debug tools: Selected objects right of screen",
+        "Kyanite debug tools: Selected objects right of screen",
         NotificationIcon::Info,
         3.0f
     )->show();

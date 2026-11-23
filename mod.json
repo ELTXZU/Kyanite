@@ -3,11 +3,14 @@
     "gd": {
         "win": "2.2081"
     },
-    "id": "iliashdz.bismuth",
-    "name": "Bismuth (experimental)",
-    "version": "v0.2.3-alpha",
-    "developer": "IliasHDZ",
-    "description": "Rendering optimization mod",
+    "id": "iliashdz.kyanite",
+    "name": "Kyanite",
+    "version": "v0.3.0-alpha",
+    "developers": [
+        "IliasHDZ",
+        "ELTXZU"
+    ],
+    "description": "GPU-driven object renderer for Geometry Dash",
     "dependencies": {
         "geode.node-ids": ">=v1.20.0"
     },
@@ -16,7 +19,7 @@
         "utility"
     ],
     "links": {
-        "source": "https://github.com/IliasHDZ/Bismuth",
+        "source": "https://github.com/ELTXZU/Bismuth",
         "community": "https://discord.gg/B6H6ZVJx9C"
     },
     "resources": {
@@ -31,15 +34,16 @@
     },
     "settings": {
         "enabled": {
-            "name": "Bismuth enabled",
+            "name": "Kyanite enabled",
             "type": "bool",
-            "default": true
+            "default": true,
+            "description": "Use Kyanite's renderer. Turn this off to draw levels with Geometry Dash's own renderer."
         },
         "frame_timing": {
             "name": "Log frame timing",
             "type": "bool",
             "default": true,
-            "description": "Writes an average timing breakdown of every rendered frame to the Geode log every 5 seconds (FPS, group state updates, culling, drawing, ...). Useful to see what is left to optimize."
+            "description": "Log an average breakdown of the frame every 5 seconds: FPS, group state updates, culling, sorted batch regeneration and drawing."
         },
         "gpu_core_count": {
             "name": "GPU core count",
@@ -47,25 +51,25 @@
             "default": 0,
             "max": 20000,
             "min": 0,
-            "description": "Here, you can manually specify your GPU core count. If set at 0, Bismuth attempts to find the core count manually. If it can't find it, make sure you set this value correctly. You can also try different values to see how it affects performance."
+            "description": "How many compute work groups the culling pass uses. 0 detects it automatically; set it by hand if detection fails. Higher values can help on large GPUs, lower values on small ones."
         },
         "debug_tools": {
-            "name": "Enable debug tools",
+            "name": "Debug tools",
             "type": "bool",
             "default": false,
-            "description": "Allows you to enable and disable Bismuth while playing by pressing F8. It also allows you to use Difference Mode by pressing F9 (Difference Mode is very unstable).\nPressing F7 in the editor selects all objects right of the screen.\n\n WARNING: This option effectively removes any optimization."
+            "description": "F8 toggles Kyanite while playing, F9 opens difference mode (very unstable), F7 selects every object right of the screen in the editor.\n\nTurns off the optimizations."
         },
         "use_mapped_buffers": {
-            "name": "Use persistently mapped buffers",
+            "name": "Persistently mapped buffers",
             "type": "bool",
             "default": false,
-            "description": "!!!! WARNING: VERY BUGGY !!!!\n\nMay work well with integrated GPU, not so much with discrete GPUs (like a graphics card)"
+            "description": "Writes buffers through a persistent mapping instead of uploading them.\n\nBuggy on many drivers. Sometimes helps on integrated GPUs, usually hurts on dedicated ones."
         },
         "disable_object_pulse": {
             "name": "Disable object pulse",
             "type": "bool",
             "default": false,
-            "description": "Disables the pulsing of objects that pulse to the song"
+            "description": "Objects no longer pulse to the song."
         }
     }
 }

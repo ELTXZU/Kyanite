@@ -39,8 +39,8 @@ private:
     u32 vanillaTexture = 0;
     u32 vanillaFramebuffer = 0;
 
-    u32 bismuthTexture = 0;
-    u32 bismuthFramebuffer = 0;
+    u32 kyaniteTexture = 0;
+    u32 kyaniteFramebuffer = 0;
 
     UPtr<Shader> shader = nullptr;
 };

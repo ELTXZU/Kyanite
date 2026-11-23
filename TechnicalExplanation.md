@@ -1,6 +1,6 @@
 # Technical Explanation
-Bismuth's rendering engine is completely seperate from how
-Geometry Dash renders its levels. Bismuth's renderer is
+Kyanite's rendering engine is completely seperate from how
+Geometry Dash renders its levels. Kyanite's renderer is
 ONLY concerned with rendering objects. Shader effects and
 other stuff remain unaffected.
 
@@ -83,16 +83,16 @@ way of rotating objects. There is no reason why it has to be like that and
 making it use simple rotation math instead would already make it run like 
 5x faster.
 
-## 2 How does Bismuth do it?
+## 2 How does Kyanite do it?
 
 ### 2.0 Simple overview
 
-When starting a level, Bismuth gathers all info about objects and its
+When starting a level, Kyanite gathers all info about objects and its
 sprites that are required in the rendering. It also gathers other info
 for rendering. And then sends it all to the GPU and loads it into
 designated buffers (chunks of memory).
 
-And every frame, Bismuth gathers all the color channel colors and send it
+And every frame, Kyanite gathers all the color channel colors and send it
 to the GPU. It also gathers info about movement triggers and sends
 that to the GPU so that it can figure out where the objects would
 be located now after having been moved by triggers.
@@ -106,7 +106,7 @@ GPUs are designed to read a single instruction from a shader and apply it
 to many, many pieces of data. A single GPU core handles a single piece of data and
 GPUs can have 10,000s of such cores.
 
-Bismuth's compute shader goes through every object and applies the movement
+Kyanite's compute shader goes through every object and applies the movement
 transforms to it. It finds the current position and checks if it's on screen.
 If it is, figures out its color from the color channel buffer. It applies some
 other specific transforms like rotation and such. And then it adds that object
@@ -123,15 +123,15 @@ objects can change blending over the course of a level, they can spontaneously
 change ordering due to how GD handles sprites and sprite batches as explained in
 [section 1.1](#11-sprite-batches).
 
-Bismuth's compute shader needs one list of all sprites in the order that they are
-drawn. Everytime blending changes, Bismuth generates a new list of objects
+Kyanite's compute shader needs one list of all sprites in the order that they are
+drawn. Everytime blending changes, Kyanite generates a new list of objects
 sorted depending on the blending states.
 
-However, Bismuth makes sure to store that sorted list when blending changes
+However, Kyanite makes sure to store that sorted list when blending changes
 again so that it does not have to be regenerated once the blending states
 changes back.
 
-When generating that sorted object batch, Bismuth reorders all the sprites
+When generating that sorted object batch, Kyanite reorders all the sprites
 into the correct layers (based on zlayer, spritebatch and now the new blending states) and sorts them.
 
 For them to be processed by the compute shader, they will have to be divided
@@ -170,7 +170,7 @@ We finally store its color, transformation and opacity into the
 to draw the sprites on screen.
 
 Because of the fact that there may be a varying number of sprites to
-be drawn. We also need to tell the GPU how many to draw. Bismuth allocates
+be drawn. We also need to tell the GPU how many to draw. Kyanite allocates
 one draw command for each work group. A draw command tells the rendering
 stage how many sprites to render.
 
@@ -189,7 +189,7 @@ Instead of storing the current transformation and alpha of every group
 per group. It stores it per **group combination**. It stores it into
 the **group combination state buffer**.
 
-Bismuth goes through every object in the level and assigns every unique
+Kyanite goes through every object in the level and assigns every unique
 combination of group ids a group combination id:
 
 ```
@@ -201,16 +201,16 @@ object 5 group ids: (1, 20)   <- group combination id 4
 object 6 group ids: (1, 8)    <- group combination id 3
 ```
 
-For every group combination, Bismuth stores its **current alpha**.
+For every group combination, Kyanite stores its **current alpha**.
 It fetches all the current group alpha values from the game's
 code, combines them for every group combination and stores them
 into the **group combination state buffer**.
 
-Bismuth also stores a transformation matrix for every group combination.
+Kyanite also stores a transformation matrix for every group combination.
 This matrix says how much objects with that group combination have been
 moved or transformed in any way by move/rotate/follow triggers.
 
-Bismuth listens to any move/rotate/follow trigger actions in the game.
+Kyanite listens to any move/rotate/follow trigger actions in the game.
 Then applies those transformations to its group combination states in
 the group combination state buffer.
 
