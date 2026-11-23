@@ -86,12 +86,11 @@ from the game's. Turn it off with *Log frame timing* once you are done tuning.
 ## A frame in Kyanite
 
 ```mermaid
-flowchart LR
-    A[Game update<br/>triggers update group state] --> B[Group state buffer<br/>uploaded only when it changed]
-    B --> C[Compute pass<br/>cull off-screen sprites<br/>prefix sum builds draw order]
-    C --> D[Indirect draw<br/>one call per layer]
-    D --> E[Vertex shader<br/>sprite matrix from group state]
-    E --> F[Fragment shader<br/>sprite sheet times colour]
+flowchart TD
+    A["Game update<br/>triggers change group state"] --> B["Group state upload<br/>only on the frames a value changed"]
+    B --> C["Culling compute pass<br/>drop off-screen sprites, prefix sum builds the draw order"]
+    C --> D["Indirect draw<br/>one call per layer, order comes from the GPU"]
+    D --> E["Vertex and fragment shader<br/>per sprite transform, sprite sheet times colour"]
 ```
 
 `src/renderer/Renderer.cpp` drives this: uniforms, group state, the culling
