@@ -1,3 +1,11 @@
+# 0.2.2-alpha
+- Fixed the object culling compute shader using a single GPU invocation per
+  work group: every work group looped over its ~5000 sprites on one thread, so
+  only a few dozen lanes culled the whole level each frame. That cost about a
+  millisecond per frame and made Bismuth slower than vanilla on object heavy
+  levels. Each work group now spreads its sprite range over 64 invocations with
+  a shared memory prefix sum, which keeps the draw order identical
+
 # 0.2.1-alpha
 - Restored full-speed rendering: the hitbox compatibility fallback used to hand
   rendering back to the game while a hitbox viewer was open, which disabled the

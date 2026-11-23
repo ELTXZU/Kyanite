@@ -2,7 +2,21 @@
 
 #include "shared.h"
 
-layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+/*
+    One work group processes one contiguous range of sprites (a work group
+    from the work group buffer). Every invocation handles one sprite of that
+    range at a time and the group writes the culled triangle indices with a
+    shared memory prefix sum.
+
+    This used to be a single invocation per work group (local_size_x = 1)
+    looping over ~5000 sprites on its own, so only a few dozen GPU lanes did
+    all of the culling. That made this pass the most expensive part of a
+    frame. Spreading each range over 64 invocations keeps the written index
+    order identical while using the whole GPU.
+*/
+#define CULLING_GROUP_SIZE 64
+
+layout (local_size_x = CULLING_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 /*
     This buffer contains indicies into the input sprite buffer
@@ -19,21 +33,31 @@ STORAGE_BUFFER(DRAW_COMMAND_BUFFER_BINDING) DrawCommandBuffer {
     DrawCommand u_drawCommands[];
 };
 
+//// SHARED MEMORY ////
+
+// Number of indices every invocation wants to write for the current chunk.
+// Holds the inclusive prefix sum after the scan.
+shared uint s_indexCounts[CULLING_GROUP_SIZE];
+
 //// GLOBALS ////
 uint objectFlags;
 uint objectIndex;
 uint spriteType;
 vec2 objectPosition;
 vec2 vertexOffset;
-uint culledIndexBufferOutputIndex = 0;
+
+// Set by processSprite() when a sprite is visible
+uint spriteIndexStart;
+uint spriteIndexCount;
 
 //// HELPER FUNCTION PREDECLARATIONS ////
+bool processSprite(uint preCulledSpriteIndex);
 bool isObjectOnScreen();
 float calculateAudioScale();
 vec4 calculateInvisibleBlockColorAndOpacity(vec4 color);
 
 //// PROCESS SPRITE FUNCTION ////
-void processSprite(uint preCulledSpriteIndex) {
+bool processSprite(uint preCulledSpriteIndex) {
     vec2 startPosition         = PreCulledSprite_startPosition[preCulledSpriteIndex];
     uint groupCombinationIndex = PreCulledSprite_groupCombinationIndex[preCulledSpriteIndex];
 
@@ -43,7 +67,7 @@ void processSprite(uint preCulledSpriteIndex) {
     objectPosition = state.positionalTransform * startPosition + state.offset;
 
     if (!isObjectOnScreen())
-        return;
+        return false;
 
     uint spriteIndex = u_spriteRemapIndicies[preCulledSpriteIndex];
 
@@ -141,34 +165,73 @@ void processSprite(uint preCulledSpriteIndex) {
         color.a *= blackChildOpacity;
 
     if (color.a <= 0.0)
-        return;
+        return false;
 
     //// SAVE DATA INTO RAW SPRITE BUFFER ////
     RawSprite_position[spriteIndex] = objectPosition;
     RawSprite_localTransform[spriteIndex] = objectLocalTransform;
     RawSprite_color[spriteIndex] = color;
 
-    //// WRITE THE SPRITE INDICIES ////
-    uint indexEnd = sprite.indexStart + sprite.indexCount;
+    spriteIndexStart = sprite.indexStart;
+    spriteIndexCount = sprite.indexCount;
 
-    for (uint i = sprite.indexStart; i < indexEnd; i++) {
-        u_culledTriIndicies[culledIndexBufferOutputIndex] = i;//u_inputIndicies[i];
-        culledIndexBufferOutputIndex++;
-    }
+    return true;
 }
 
 //// MAIN FUNCTION ////
 void main() {
     uint workGroupIndex = gl_WorkGroupID.x;
+    uint lane = gl_LocalInvocationID.x;
 
     WorkGroup workGroup = u_workGroups[workGroupIndex];
-    culledIndexBufferOutputIndex = workGroup.culledIndexBufferOutputIndex;
 
-    for (uint i = workGroup.inputSpriteStart; i < workGroup.inputSpriteEnd; i++)
-        processSprite(i);
+    uint outputIndex = workGroup.culledIndexBufferOutputIndex;
+
+    for (uint spriteBase = workGroup.inputSpriteStart; spriteBase < workGroup.inputSpriteEnd; spriteBase += CULLING_GROUP_SIZE) {
+        uint preCulledSpriteIndex = spriteBase + lane;
+
+        bool visible = false;
+        uint indexCount = 0;
+
+        if (preCulledSpriteIndex < workGroup.inputSpriteEnd) {
+            visible = processSprite(preCulledSpriteIndex);
+
+            if (visible)
+                indexCount = spriteIndexCount;
+        }
+
+        //// PREFIX SUM OF THE INDICES WRITTEN BY THIS CHUNK ////
+        s_indexCounts[lane] = indexCount;
+        barrier();
+
+        for (uint scanStep = 1u; scanStep < CULLING_GROUP_SIZE; scanStep *= 2u) {
+            uint value = lane >= scanStep ? s_indexCounts[lane - scanStep] : 0u;
+            barrier();
+            s_indexCounts[lane] += value;
+            barrier();
+        }
+
+        uint exclusiveIndexCount = s_indexCounts[lane] - indexCount;
+        uint chunkIndexCount     = s_indexCounts[CULLING_GROUP_SIZE - 1];
+
+        //// WRITE THE SPRITE INDICIES ////
+        if (visible) {
+            uint writeIndex = outputIndex + exclusiveIndexCount;
+
+            for (uint i = 0u; i < indexCount; i++)
+                u_culledTriIndicies[writeIndex + i] = spriteIndexStart + i;
+        }
+
+        outputIndex += chunkIndexCount;
+
+        // Make sure every invocation is done with the shared counts before
+        // the next chunk overwrites them.
+        barrier();
+    }
 
     //// WRITE THE DRAW COMMAND ////
-    u_drawCommands[workGroupIndex].count = (culledIndexBufferOutputIndex - workGroup.culledIndexBufferOutputIndex) * 3;
+    if (lane == 0u)
+        u_drawCommands[workGroupIndex].count = (outputIndex - workGroup.culledIndexBufferOutputIndex) * 3;
 }
 
 //// HELPER FUNCTIONS ////
