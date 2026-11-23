@@ -195,5 +195,8 @@ private:
 
     float gameTimer = 0.0;
 
+    // Set when the object layer starts drawing, cleared in finish().
+    u64 drawStartTime = 0;
+
     i64 renderedGameObjectCount;
 };

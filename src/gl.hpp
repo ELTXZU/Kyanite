@@ -17,6 +17,18 @@
 #define GL_MAX_SHADER_STORAGE_BLOCK_SIZE 0x90DE
 #define GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS 0x90DD
 
+// OpenGL 4.2 barrier bits. Guarded because some GL headers already define
+// them and redefining them is an error.
+#ifndef GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
+#define GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT 0x00000001
+#endif
+#ifndef GL_COMMAND_BARRIER_BIT
+#define GL_COMMAND_BARRIER_BIT 0x00000040
+#endif
+#ifndef GL_SHADER_STORAGE_BARRIER_BIT
+#define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
+#endif
+
 #ifndef GLAD_API_CALL
 #define GLAD_API_CALL extern
 #endif
@@ -40,6 +52,11 @@ GLAD_API_CALL PFNGLGETPROGRAMRESOURCEINDEXPROC glad_glGetProgramResourceIndex;
 #define glGetProgramResourceIndex glad_glGetProgramResourceIndex
 GLAD_API_CALL PFNGLSHADERSTORAGEBLOCKBINDINGPROC glad_glShaderStorageBlockBinding;
 #define glShaderStorageBlockBinding glad_glShaderStorageBlockBinding
+
+/*
+    glMemoryBarrier is part of OpenGL 4.2, which the GLEW that ships with
+    cocos2d already exposes, so it is not declared here.
+*/
 
 bool hasLoadedNewerOpenGLFunctions();
 void loadNewerOpenGLFunctions();

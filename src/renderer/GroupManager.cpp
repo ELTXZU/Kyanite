@@ -277,6 +277,16 @@ void GroupManager::restoreGroupStates(StoredGroupStates& storage) {
     usize numToggles = std::min(storage.isGroupToggledOn.size(), isGroupToggledOn.size());
     std::copy_n(storage.isGroupToggledOn.begin(), numToggles, isGroupToggledOn.begin());
 
+    /*
+        Pulse indices are rebuilt from the effect manager every frame, so a
+        restored index would only be stale. Clearing them keeps the tracked
+        list of pulsing combinations correct.
+    */
+    for (auto& groupState : getGroupStates())
+        groupState.pulseIndex = 0;
+
+    pulsingGroupCombinationIndicies.clear();
+
     stateDirty = true;
 }
 
@@ -373,6 +383,11 @@ void GroupManager::resetGroupStates() {
     }
 
     std::fill(isGroupToggledOn.begin(), isGroupToggledOn.end(), true);
+
+    for (auto& groupState : getGroupStates())
+        groupState.pulseIndex = 0;
+
+    pulsingGroupCombinationIndicies.clear();
 
     stateDirty = true;
     alphaValuesInitialized = false;
@@ -494,47 +509,55 @@ struct PulseEntry {
     inline static PulseEntry endIndicator() { return PulseEntry(); }
 };
 
+// Reused between frames so a frame that has pulses doesn't allocate.
+static std::vector<GroupCombinationIndex> pulsingCombinationScratch;
+static std::vector<PulseEntry> pulseEntriesScratch;
+
 void GroupManager::updatePulseEntries() {
     PROFILER_SCOPE("GroupManager::updatePulseEntries");
     ScopedFrameTimer timer(renderer.getFrameTiming().groupStatesPulse);
 
     PlayLayer* layer = renderer.getPlayLayer();
-    if (!layer || !layer->m_effectManager)
+    if (!layer || !layer->m_effectManager || !groupStates)
         return;
 
     auto effectManager = layer->m_effectManager;
 
-    for (usize i = 0; i < getGroupCombinationCount(); i++) {
-        if (groupStates[i].pulseIndex == 0)
-            continue;
-
-        groupStates[i].pulseIndex = 0;
+    /*
+        Only the combinations that pulsed last frame can have a non zero pulse
+        index. This used to walk every group combination in the level on every
+        frame just to clear the few that actually pulsed.
+    */
+    for (auto combIndex : pulsingGroupCombinationIndicies) {
+        groupStates[combIndex].pulseIndex = 0;
         stateDirty = true;
     }
 
-    std::vector<GroupCombinationIndex> pulsingGroupCombs;
+    pulsingGroupCombinationIndicies.clear();
 
     if (groupCombinations.empty())
         return;
+
+    auto& pulsingCombinations = pulsingCombinationScratch;
+    pulsingCombinations.clear();
 
     for (usize gid = 0; gid < effectManager->m_unkVector2f0.size(); gid++) {
         if (!effectManager->m_unkVector2f0[gid] || gid >= groupCombinationIndiciesPerGroupId.size())
             continue;
 
         for (const auto& groupComb : groupCombinationIndiciesPerGroupId[gid])
-            pulsingGroupCombs.push_back(groupComb);
+            pulsingCombinations.push_back(groupComb);
     }
 
-    std::vector<PulseEntry> pulseEntries;
+    auto& pulseEntries = pulseEntriesScratch;
+    pulseEntries.clear();
 
     // This is so that pulse index 0 can be skipped immediately without
     // having to be checked
     pulseEntries.push_back(PulseEntry::endIndicator());
 
-    usize maxEntryCount = 0;
-
-    for (auto groupCombIndex : pulsingGroupCombs) {
-        u32 pulseIndex = pulseEntries.size();
+    for (auto groupCombIndex : pulsingCombinations) {
+        u32 pulseIndex = (u32)pulseEntries.size();
 
         const auto& comb = groupCombinations[groupCombIndex];
 
@@ -545,9 +568,13 @@ void GroupManager::updatePulseEntries() {
             if (!effectManager->m_unkVector2f0[gid])
                 continue;
 
-            const auto& pulseActions = effectManager->m_pulseEffectMap[gid];
+            // find() instead of operator[], which would insert an empty entry
+            // for a pulsing group that has no pulse actions.
+            auto pulseActionsIt = effectManager->m_pulseEffectMap.find(gid);
+            if (pulseActionsIt == effectManager->m_pulseEffectMap.end())
+                continue;
 
-            for (const auto& action : pulseActions) {
+            for (const auto& action : pulseActionsIt->second) {
                 if (
                     action.m_pulseEffectType != PulseEffectType::Hsv &&
                     action.m_pulseEffectType != PulseEffectType::Color
@@ -555,8 +582,7 @@ void GroupManager::updatePulseEntries() {
                     continue;
                 }
 
-                pulseEntries.push_back(PulseEntry::fromAction(action));     
-                maxEntryCount++;       
+                pulseEntries.push_back(PulseEntry::fromAction(action));
             }
         }
 
@@ -565,10 +591,8 @@ void GroupManager::updatePulseEntries() {
 
         pulseEntries.push_back(PulseEntry::endIndicator());
 
-        if (groupStates[groupCombIndex].pulseIndex == pulseIndex)
-            continue;
-
         groupStates[groupCombIndex].pulseIndex = pulseIndex;
+        pulsingGroupCombinationIndicies.push_back(groupCombIndex);
         stateDirty = true;
     }
 
@@ -576,10 +600,8 @@ void GroupManager::updatePulseEntries() {
     // frames. Its contents never change, so the buffer can keep its value.
     bool nothingPulses = pulseEntries.size() == 1;
 
-    if (nothingPulses && pulseEntryBuffer && pulseEntryBufferHadNoPulses) {
-        pulseEntryBufferHadNoPulses = true;
+    if (nothingPulses && pulseEntryBuffer && pulseEntryBufferHadNoPulses)
         return;
-    }
 
     pulseEntryBufferHadNoPulses = nothingPulses;
 
@@ -587,8 +609,9 @@ void GroupManager::updatePulseEntries() {
     if (!pulseEntryBuffer)
         return;
 
+    // write() uploads through the mapping when the buffer is persistently
+    // mapped, so the extra flush() this used to do was a second upload.
     pulseEntryBuffer->write(std::span<PulseEntry>(pulseEntries));
-    pulseEntryBuffer->flush(0, pulseEntries.size() * sizeof(PulseEntry));
 }
 
 #define PULSE_ENTRY_BUFFER_SIZE_STEP (32 * 1024)

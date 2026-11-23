@@ -249,29 +249,41 @@ void ObjectBatch::finishWriting() {
 }
 
 void ObjectBatch::draw(const LayerKey& layer) {
-    PROFILER_SCOPE("ObjectBatch::draw");
-
-    if (!vertexBuffer || !culledIndexBuffer || !rawSpriteBuffer)
+    if (!vertexBuffer || !culledIndexBuffer || !rawSpriteBuffer || !sortedBatch)
         return;
 
-    if (!shouldDraw(layer))
+    auto layerIt = sortedBatch->workGroupRangePerLayerKey.find(layer);
+
+    if (layerIt == sortedBatch->workGroupRangePerLayerKey.end() || layerIt->second.count == 0)
         return;
 
     auto spriteSheet = renderer.getSpriteSheetTexture(layer.spriteSheet);
     if (!spriteSheet)
         return;
 
-    ScopedFrameTimer timer(renderer.getFrameTiming().draw);
-
-    const auto& range = sortedBatch->workGroupRangePerLayerKey[layer];
+    const auto& range = layerIt->second;
 
     auto shader = renderer.getDrawingShader();
-    if (!shader->isInUse()) {
-        shader->use();
+    if (!shader)
+        return;
+
+    /*
+        This used to ask GL for the current program every layer, which is a
+        synchronous driver query. glUseProgram with the program that is
+        already bound is free by comparison, and the storage buffer bindings
+        only have to be set up again when the batch changes or the culling
+        pass replaced the program.
+    */
+    shader->use();
+
+    if (!drawStateIsBound || drawStateBoundBatch != sortedBatch) {
         rawSpriteBuffer->bind();
         sortedBatch->drawCommandBuffer->bindAs(GL_DRAW_INDIRECT_BUFFER);
         vertexBuffer->bindAsStorageBuffer(VERTEX_BUFFER_BINDING);
         culledIndexBuffer->bindAsStorageBuffer(CULLED_TRI_INDEX_BUFFER);
+
+        drawStateIsBound = true;
+        drawStateBoundBatch = sortedBatch;
     }
 
     ccGLBindTexture2D(spriteSheet->getName());
@@ -318,8 +330,13 @@ void ObjectBatch::predraw() {
             auto newSortedBatch = workGroupScheduler.fetchSortedBatchForBlendStates(blendStates, sortedBatch);
 
             if (newSortedBatch) {
-                if (newSortedBatch != sortedBatch)
+                if (newSortedBatch != sortedBatch) {
                     renderer.getFrameTiming().countSortedBatchGeneration();
+
+                    // New buffers are bound under the new batch on the next draw.
+                    drawStateIsBound = false;
+                    drawStateBoundBatch = nullptr;
+                }
 
                 sortedBatch = newSortedBatch;
                 requestedBlendStates = blendStates;
@@ -351,6 +368,22 @@ void ObjectBatch::predraw() {
     sortedBatch->bindBuffers();
 
     glDispatchCompute(sortedBatch->workGroupCount, 1, 1);
+
+    /*
+        The compute pass writes the culled indices, the raw sprite data and
+        the indirect draw commands, all of which the draw pass reads next.
+        The spec requires a barrier between the two, otherwise a driver is
+        free to start drawing before the writes are visible.
+    */
+    glMemoryBarrier(
+        GL_SHADER_STORAGE_BARRIER_BIT |
+        GL_COMMAND_BARRIER_BIT |
+        GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
+    );
+
+    // The compute program is current now, so the drawing program has to be
+    // bound again before the next layer draws.
+    drawStateIsBound = false;
 
     cullingComputeShaderTimer.stop();
 }

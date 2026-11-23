@@ -25,6 +25,19 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp)
 # Set up the mod binary
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
+# The default RelWithDebInfo profile inlines conservatively. The renderer is
+# split across small translation units that call each other every frame
+# (ObjectBatch -> GroupManager -> Buffer), so more aggressive inlining and
+# favouring speed over size is worth it for the per-frame CPU cost.
+if (MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /Ob3 /Oi /Ot /Gw /Gy /Zc:inline)
+endif()
+
+# Note: link time code generation (/GL + /LTCG) is intentionally not enabled.
+# It drops the inline assembly stubs the Geode bindings use to resolve game
+# functions, so the mod fails to link with unresolved LevelEditorLayer/
+# GJBaseGameLayer symbols.
+
 # Not sure about this...............
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 # set(CMAKE_CXX_FLAGS_RELEASE "-O3")

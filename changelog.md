@@ -1,3 +1,25 @@
+# 0.4.0-alpha
+- The draw pass no longer asks GL which program is bound for every layer. That
+  query is synchronous, and a level draws well over a hundred layers per frame;
+  the program is now set with `glUseProgram`, which is free when it is already
+  current, and the storage buffer bindings are set up once per batch
+- Drawing time is accumulated once per frame between the start of the object
+  layer and the end of it, instead of taking two clock reads for every layer
+- The pulse pass no longer allocates two vectors per frame, no longer walks every
+  group combination in the level just to clear the few pulse indices that were
+  set, and no longer inserts empty entries into the game's pulse effect map for
+  groups that pulse without actions
+- Buffer uploads no longer query the previous `GL_ARRAY_BUFFER` binding, and a
+  buffer that is persistently mapped is written through the mapping instead of
+  `glBufferSubData` (which is not allowed on a mapped buffer)
+- Added the memory barrier the spec requires between the culling compute pass and
+  the draw pass, so drivers cannot start drawing before the culled index, sprite
+  and draw command writes are visible
+- The mod target builds with `/Ob3 /Oi /Ot` instead of the default
+  RelWithDebInfo inlining
+- New logo and banner, README rewritten around how the renderer works and how to
+  read the frame timing log
+
 # 0.3.0-alpha
 - Renamed the mod to Kyanite, mod id `iliashdz.kyanite`. Settings, log messages,
   batch ids and resource paths use the new name. The old `iliashdz.bismuth.geode`
@@ -53,9 +75,8 @@
 - Fixed the profiler adding timer overhead while not taking a snapshot
 - Fixed difference mode leaving a framebuffer bound when it failed
 - Fixed objects with missing sprite sheet textures still taking up buffer space
-- Fixed the renderer turning itself off for the whole level (so the mod did
-  nothing and gave no FPS gain) when a level contained a single unsupported
-  trigger or sprite sheet object
+- Fixed the renderer turning itself off for the whole level when a level
+  contained a single unsupported trigger or sprite sheet object
 - Levels that use per-object effects (Scale trigger, area/enter effects,
   advanced follow, keyframes) keep rendering with Bismuth; the objects those
   triggers affect keep their initial transform

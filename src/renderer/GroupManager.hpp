@@ -236,6 +236,12 @@ private:
     bool pulseEntryBufferHadNoPulses = false;
 
     /*
+        The combinations that currently have a non zero pulse index, so the
+        per frame update only has to clear those instead of every combination.
+    */
+    std::vector<GroupCombinationIndex> pulsingGroupCombinationIndicies;
+
+    /*
         This is a vector with the index being a group id and the value being
         an array of all group combination indicies it belongs to.
 

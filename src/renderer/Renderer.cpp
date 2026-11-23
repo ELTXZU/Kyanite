@@ -617,10 +617,20 @@ void Renderer::draw() {
     }
 
     renderingTimer.start();
+
+    // The layer nodes draw between here and finish(), which is where the
+    // drawing time is accumulated. Timing every layer draw separately cost a
+    // pair of clock reads per layer for a number that only matters as a sum.
+    drawStartTime = getTime();
 }
 
 void Renderer::finish() {
     renderingTimer.stop();
+
+    if (drawStartTime != 0) {
+        frameTiming.draw += getTime() - drawStartTime;
+        drawStartTime = 0;
+    }
 
     updateDebugText();
     frameTiming.endFrame();
@@ -735,6 +745,7 @@ void Renderer::setEnabled(bool enabled) {
 
 void Renderer::reset() {
     gameTimer = 0.0;
+    drawStartTime = 0;
     groupManager.clearCheckpoints();
     groupManager.resetGroupStates();
 }

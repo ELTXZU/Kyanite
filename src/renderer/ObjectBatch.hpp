@@ -110,6 +110,14 @@ private:
     WorkGroupScheduler workGroupScheduler;
     SortedObjectBatch* sortedBatch = nullptr;
 
+    /*
+        The drawing program and the storage buffer bindings are global GL
+        state, so they only have to be set up once per batch instead of on
+        every layer draw.
+    */
+    bool drawStateIsBound = false;
+    const SortedObjectBatch* drawStateBoundBatch = nullptr;
+
     ColorChannelBlendStates requestedBlendStates {};
     ColorChannelBlendStates lastSeenBlendStates {};
     u32 stableBlendStateFrames = 0;

@@ -35,13 +35,26 @@ void Buffer::write(void* data, usize size, usize offset) {
     if (!data || size == 0 || offset > this->size || size > this->size - offset)
         return;
 
-    i32 previouslyBoundBuffer;
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previouslyBoundBuffer);
+    /*
+        While the buffer is persistently mapped, glBufferSubData is not
+        allowed. Write through the mapping instead and let the caller flush.
+
+        The previous binding is not queried anymore: an ARRAY_BUFFER binding
+        is not part of vertex array object state, and every cocos draw binds
+        the buffers it needs, so leaving this at 0 skips a synchronous
+        glGetIntegerv on every upload.
+    */
+    if (mappedData && shouldMap) {
+        std::memcpy(mappedData + offset, data, size);
+        glBindBuffer(GL_ARRAY_BUFFER, id);
+        glFlushMappedBufferRange(GL_ARRAY_BUFFER, offset, size);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        return;
+    }
 
     glBindBuffer(GL_ARRAY_BUFFER, id);
     glBufferSubData(GL_ARRAY_BUFFER, offset, size, data);
-
-    glBindBuffer(GL_ARRAY_BUFFER, previouslyBoundBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void* Buffer::map(i32 type) {
