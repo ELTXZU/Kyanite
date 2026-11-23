@@ -87,10 +87,10 @@ from the game's. Turn it off with *Log frame timing* once you are done tuning.
 
 ```mermaid
 flowchart TD
-    A["Game update<br/>triggers change group state"] --> B["Group state upload<br/>only on the frames a value changed"]
-    B --> C["Culling compute pass<br/>drop off-screen sprites, prefix sum builds the draw order"]
-    C --> D["Indirect draw<br/>one call per layer, order comes from the GPU"]
-    D --> E["Vertex and fragment shader<br/>per sprite transform, sprite sheet times colour"]
+    A["Triggers change group state"] --> B["Group state upload<br/>only when it changed"]
+    B --> C["Culling compute pass<br/>drops off-screen sprites"]
+    C --> D["Indirect draw<br/>one call per layer"]
+    D --> E["Vertex and fragment shader<br/>transform and colour"]
 ```
 
 `src/renderer/Renderer.cpp` drives this: uniforms, group state, the culling
