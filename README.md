@@ -5,6 +5,83 @@ for maximum performance.
 
 Currently experimental
 
+## Hitboxes and cheat compatibility
+
+Hitbox viewers (MegaHack's show hitboxes, GD Mega Overlay, GD's own debug draw
+and hitboxes on death) draw the game's own hitbox rectangles. Bismuth keeps
+rendering the level with its optimizations on while they are active: the
+objects on screen are activated invisibly so the game can compute their
+hitboxes, and everything else stays culled. Hitboxes line up with what you see,
+including objects moved or rotated by triggers.
+
+Hitbox viewers do not turn the renderer off - if they did, you would get
+vanilla FPS while they are on.
+
+## Trigger support
+
+Group based triggers are applied on the GPU: move, rotate, follow, toggle,
+alpha and pulse. Every other trigger keeps working because it doesn't change
+how objects are drawn.
+
+Per-object effects are different: the Scale trigger (2067), the Area and Enter
+effects (3006+), Advanced Follow and keyframes move or resize every object
+individually, which a per-group state can't describe. Bismuth keeps rendering
+these levels (so you still get the speedup), but objects touched by those
+triggers keep their initial transform instead of animating. Giving those
+effects a per-object transform buffer is the next step (see TODO.md).
+
+Objects that come from a sprite sheet the renderer has no texture for are
+skipped by the renderer; the rest of the level is still rendered normally.
+
+## Supported versions
+
+The mod is built for **Geometry Dash 2.2081** with **Geode 5.11.2**. The source
+also builds unchanged against Geode 6 / GD 2.2091 - set `geode` to
+`6.0.0-beta.1` and `gd.win` to `2.2091` in `mod.json` and build with the 6.x
+SDK and its bindings; the only version difference (`PlayLayer::init`
+arguments) is handled by a `GEODE_COMP_GD_VERSION` check.
+
+Both builds are produced from this source: use the `.geode` matching your
+Geode version, Geode will refuse the other one.
+
+## Building
+
+The mod is built with the [Geode SDK](https://docs.geode-sdk.org/).
+
+On Windows:
+
+```
+geode build
+```
+
+On Linux (cross-compiling for Windows):
+
+```
+geode sdk install-linux
+geode build -p windows
+```
+
+If the SDK helper can't download the Windows SDK, you can wire the toolchain up
+by hand (this is how the current release was built):
+
+1. `xwin --accept-license --arch x86_64 splat --output ./xwin-splat` (xwin 0.10+)
+2. LLVM/clang 19 or newer, with `clang-cl`, `lld-link`, `llvm-lib`, `llvm-mt`,
+   `llvm-rc` and `llvm-nm`
+3. Configure:
+
+```
+cmake -S . -B build-win -G Ninja \
+  -DGEODE_TARGET_PLATFORM=Win64 \
+  -DCMAKE_TOOLCHAIN_FILE=<geode-sdk>/clang-cl-msvc.cmake \
+  -DSPLAT_DIR=./xwin-splat -DHOST_ARCH=x86_64 \
+  -DLLVM_VER=19 -DCLANG_VER=19 -DLLVM_PATH=<llvm>/bin \
+  -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL
+cmake --build build-win
+```
+
+Pushing to this repository also builds a Windows `.geode` through the
+GitHub Actions workflow in `.github/workflows/multi-platform.yml`.
+
 You can try the latest builds from the discord server: https://discord.gg/MDbQt3w8HC
 
 <img src="logo.png" alt="Bismuth logo" width="100"/>

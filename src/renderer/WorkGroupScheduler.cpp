@@ -3,6 +3,9 @@
 #include "../cl.hpp"
 
 void SortedObjectBatch::bindBuffers() {
+    if (!preCulledSpritesBuffer)
+        return;
+
     if (!haveBuffersBeenCreated) {
         spriteRemapBuffer = Buffer::createStaticDraw(
             "SpriteRemapBuffer",
@@ -107,6 +110,11 @@ void WorkGroupScheduler::cleanUpFinishedJobs() {
 
         for (auto it = currentGenerationJobs.begin(); it != currentGenerationJobs.end(); it++) {
             if (it->second.get() == job) {
+                // The job owns its thread. Join it before the job is destroyed
+                // so the thread can never outlive the object it runs on.
+                if (job->thread.joinable())
+                    job->thread.join();
+
                 currentGenerationJobs.erase(it);
                 break;
             }
@@ -160,7 +168,7 @@ void WorkGroupScheduler::GenerationJob::generateSortedBatchForBlendStates() {
         spriteCount = scheduler.spriteEntries.size();
         loadAndSortSprites(scheduler.spriteEntries);
 
-        if (spriteCount <= 0) {
+        if (spriteCount <= 0 || !preCulledSprites) {
             scheduler.sortedBatchesPerBlendStates[blendStates] = nullptr;
             scheduler.finishedGenerationJobs.insert(this);
             return;

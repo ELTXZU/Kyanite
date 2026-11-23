@@ -20,7 +20,11 @@ std::string byteSizeToString(usize size) {
 }
 
 bool isOpenGLAtLeastVersion(u32 major, u32 minor) {
-    std::string version = (const char*)glGetString(GL_VERSION);
+    const char* versionString = (const char*)glGetString(GL_VERSION);
+    if (!versionString)
+        return false;
+
+    std::string version = versionString;
     if (version.starts_with("OpenGL ES"))
         return false;
 
@@ -81,7 +85,7 @@ void drawFullscreenQuad() {
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-#include <geode/modify/CCDirector.hpp>
+#include <Geode/modify/CCDirector.hpp>
 class $modify(CommonCCDirector, CCDirector) {
     void purgeDirector() {
         if (fullscreenQuadVAO)
@@ -94,7 +98,7 @@ class $modify(CommonCCDirector, CCDirector) {
     }
 };
 
-std::optional<std::string> readResourceFile(const asp::fs::Path& path) {
+std::optional<std::string> readResourceFile(const bismuth::ResourcePath& path) {
     std::ifstream t((Mod::get()->getResourcesDir() / path).string());
     if (!t.is_open())
         return std::nullopt;

@@ -11,10 +11,11 @@ public:
 
     inline void setEnabled(bool enabled) {
         this->enabled = enabled;
-        if (!enabled)
+
+        if (!enabled) {
             stencilBuffer.clear();
-        else if (!initialized)
-            init();
+            stencilBuffer.shrink_to_fit();
+        }
     }
 
     inline bool isEnabled() { return enabled; }

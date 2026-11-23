@@ -30,6 +30,7 @@ private:
     ~Renderer() override;
 
     bool init(PlayLayer* layer, cocos2d::CCArray* objects);
+    bool initInternal(PlayLayer* layer, cocos2d::CCArray* objects);
 
     void generateBatchNodes();
 
@@ -74,10 +75,22 @@ public:
     }
 
     inline usize getObjectIndex(GameObject* object) {
-        return objectIndicies[object];
+        auto it = objectIndicies.find(object);
+        if (it == objectIndicies.end())
+            return 0;
+        return it->second;
     }
 
     inline bool isEnabled() { return enabled; }
+
+    /*
+        Returns true if this renderer was created for the given game layer.
+        Renderers can outlive their layer for a frame, so every hook must
+        check this before touching the renderer's state.
+    */
+    inline bool isForLayer(GJBaseGameLayer* gameLayer) const {
+        return layer == gameLayer;
+    }
 
     inline DifferenceMode* getDifferenceMode() {
         if (!differenceModeEnabled) return nullptr;

@@ -6,6 +6,7 @@
 #include "../profiler.hpp"
 #include <optional>
 #include <string>
+#include <algorithm>
 
 using namespace geode::prelude;
 
@@ -30,9 +31,11 @@ static std::optional<GroupID> getTargetGroupIdOfVisibilityTrigger(GameObject* ob
 }
 
 GroupCombination::GroupCombination(std::array<GroupID, 10>* groupIds, i32 count) {
+    count = std::clamp<i32>(count, 0, 10);
+
     i32 i = 0;
     for (; i < count; i++)
-        ids[i] = groupIds->at(i);
+        ids[i] = (*groupIds)[i];
     for (; i < 10; i++)
         ids[i] = 0;
     this->count = count;
@@ -42,8 +45,8 @@ GroupCombination::GroupCombination(std::array<GroupID, 10>* groupIds, i32 count)
 }
 
 GroupCombination::GroupCombination(std::vector<GroupID> groupIds) {
-    count = groupIds.size();
-    std::copy(groupIds.begin(), groupIds.end(), ids.begin());
+    count = std::min<i32>((i32)groupIds.size(), 10);
+    std::copy(groupIds.begin(), groupIds.begin() + count, ids.begin());
     std::fill(ids.begin() + count, ids.end(), 0);
     std::sort(ids.begin(), ids.begin() + count);
 }
@@ -82,6 +85,9 @@ GroupManager::~GroupManager() {}
 static std::set<GameObject*> dobjects;
 
 void GroupManager::initWithObjects(cocos2d::CCArray* objects) {
+    if (!objects)
+        return;
+
     auto emptyGroupComb = GroupCombination(std::vector<GroupID>{});
     addGroupCombination(emptyGroupComb, 0);
     GroupCombinationIndex groupCombIndex = 1;
@@ -148,9 +154,11 @@ void GroupManager::initWithObjects(cocos2d::CCArray* objects) {
     alphaValuesPerAlphaIndex.resize(alphaIndiciesCount);
 
     groupStateBuffer = Buffer::createDynamicDraw("GroupStateBuffer", getGroupStateBufferSize());
-    groupStates = (GroupCombinationState*)groupStateBuffer->mapReadWrite();
+    groupStates = groupStateBuffer ? (GroupCombinationState*)groupStateBuffer->mapReadWrite() : nullptr;
+    if (!groupStates)
+        log::error("Failed to create the group state buffer");
 
-    isGroupToggledOn.resize(maxGroupId + 1, true);
+    isGroupToggledOn.resize((usize)maxGroupId + 1, true);
 
     fetchVanilaRotateGroups();
 }
@@ -159,7 +167,10 @@ GroupCombinationIndex GroupManager::getGroupCombinationIndexForObject(GameObject
     auto comb = GroupCombination(object);
 
     auto it = groupCombinationIndicies.find(comb);
-    assert(it != groupCombinationIndicies.end());
+    if (it == groupCombinationIndicies.end()) {
+        log::warn("No group combination found for object {}", object ? object->m_objectID : -1);
+        return 0;
+    }
     return it->second;
 }
 
@@ -168,17 +179,23 @@ GroupCombinationIndex GroupManager::getTransformCombinationIndexForObject(GameOb
     comb.removeGroupIdsNotInSet(transformGroupIds);
 
     auto it = transformCombinationIndicies.find(comb);
-    assert(it != transformCombinationIndicies.end());
+    if (it == transformCombinationIndicies.end())
+        return 0;
 
     return it->second;
 }
 
 void GroupManager::fetchVanilaRotateGroups() {
     PlayLayer* layer = renderer.getPlayLayer();
+    if (!layer)
+        return;
 
-    vanillaRotateGroups.resize(std::max(layer->m_staticGroups.size(), layer->m_optimizedGroups.size()));
+    // Group ids used by objects are not guaranteed to have an entry in the
+    // game's group arrays, so size this from both sources.
+    usize groupArraySize = std::max(layer->m_staticGroups.size(), layer->m_optimizedGroups.size());
+    vanillaRotateGroups.resize(std::max<usize>(groupArraySize + 1, (usize)maxGroupId + 1));
 
-    for (GroupID id = 1; id < layer->m_staticGroups.size(); id++) {
+    for (usize id = 1; id < layer->m_staticGroups.size() && id < vanillaRotateGroups.size(); id++) {
         CCArray* group = layer->m_staticGroups[id];
         if (!group) continue;
 
@@ -190,17 +207,24 @@ void GroupManager::fetchVanilaRotateGroups() {
         }
     }
 
-    for (GroupID id = 1; id < vanillaRotateGroups.size(); id++) {
-        GameObject* mainObject = layer->tryGetMainObject(id);
-        if (mainObject) {
-            for (usize i = 0; i < mainObject->m_groupCount; i++)
-                vanillaRotateGroups[mainObject->m_groups->at(i)].insert(mainObject);
+    for (usize id = 1; id < vanillaRotateGroups.size(); id++) {
+        GameObject* mainObject = layer->tryGetMainObject((int)id);
+        if (!mainObject || !mainObject->m_groups)
+            continue;
+
+        for (usize i = 0; i < mainObject->m_groupCount && i < mainObject->m_groups->size(); i++) {
+            GroupID groupId = mainObject->m_groups->at(i);
+            if (groupId > 0 && (usize)groupId < vanillaRotateGroups.size())
+                vanillaRotateGroups[groupId].insert(mainObject);
         }
     }
 }
 
 void GroupManager::updateGroupStateBuffer() {
     PROFILER_SCOPE("GroupManager::updateGroupStateBuffer");
+
+    if (!groupStates || !groupStateBuffer)
+        return;
     
     updateAlphaValues();
     updatePulseEntries();
@@ -209,6 +233,9 @@ void GroupManager::updateGroupStateBuffer() {
 }
 
 void GroupManager::storeGroupStates(StoredGroupStates& storage) {
+    if (!groupStates)
+        return;
+
     storage.groupStates.resize(groupCombinationCount);
     std::memcpy(storage.groupStates.data(), groupStates, getGroupStateBufferSize());
 
@@ -217,10 +244,14 @@ void GroupManager::storeGroupStates(StoredGroupStates& storage) {
 }
 
 void GroupManager::restoreGroupStates(StoredGroupStates& storage) {
+    if (!groupStates)
+        return;
+
     usize numToCopy = std::min<usize>(storage.groupStates.size(), groupCombinationCount);
     std::memcpy(groupStates, storage.groupStates.data(), numToCopy * sizeof(GroupCombinationState));
 
-    std::copy(storage.isGroupToggledOn.begin(), storage.isGroupToggledOn.end(), isGroupToggledOn.begin());
+    usize numToggles = std::min(storage.isGroupToggledOn.size(), isGroupToggledOn.size());
+    std::copy_n(storage.isGroupToggledOn.begin(), numToggles, isGroupToggledOn.begin());
 }
 
 void GroupManager::storeCheckpoint(CheckpointObject* checkpoint) {
@@ -240,8 +271,15 @@ void GroupManager::removeCheckpoint(CheckpointObject* checkpoint) {
     storedCheckpointGroupStates.erase(checkpoint);
 }
 
+void GroupManager::clearCheckpoints() {
+    storedCheckpointGroupStates.clear();
+}
+
 void GroupManager::moveGroup(GroupID groupId, float deltaX, float deltaY) {
-    if (groupId > maxGroupId)
+    if (!groupStates || groupId < 0 || groupId > maxGroupId)
+        return;
+
+    if ((usize)groupId >= groupCombinationIndiciesPerGroupId.size())
         return;
 
     const auto& combIndicies = groupCombinationIndiciesPerGroupId[groupId];
@@ -255,7 +293,10 @@ void GroupManager::rotateGroup(
     bool lockObjectRotation,
     std::optional<glm::vec2> centerPoint
 ) {
-    if (groupId > maxGroupId)
+    if (!groupStates || groupId < 0 || groupId > maxGroupId)
+        return;
+
+    if ((usize)groupId >= groupCombinationIndiciesPerGroupId.size())
         return;
 
     float cos = cosf(glm::radians(angle));
@@ -282,12 +323,19 @@ void GroupManager::rotateGroup(
 }
 
 void GroupManager::toggleGroup(GroupID groupId, bool enabled) {
-    if (groupId > maxGroupId)
+    if (groupId < 0 || groupId > maxGroupId)
         return;
+
+    if ((usize)groupId >= isGroupToggledOn.size())
+        return;
+
     isGroupToggledOn[groupId] = enabled;
 }
 
 void GroupManager::resetGroupStates() {
+    if (!groupStates)
+        return;
+
     for (auto& groupState : getGroupStates()) {
         groupState.positionalTransform = glm::identity<glm::mat2>();
         groupState.localTransform = glm::identity<glm::mat2>();
@@ -317,9 +365,16 @@ void GroupManager::addGroupCombination(GroupCombination& comb, GroupCombinationI
 }
 
 void GroupManager::updateAlphaValues() {
-    for (u32 id = 1; id <= maxGroupId; id++) {
+    PlayLayer* layer = renderer.getPlayLayer();
+    if (!layer || !layer->m_effectManager)
+        return;
+
+    for (u32 id = 1; id <= (u32)maxGroupId; id++) {
+        if (id >= alphaValuesPerGroupId.size() || id >= isGroupToggledOn.size())
+            continue;
+
         if (isGroupToggledOn[id])
-            alphaValuesPerGroupId[id] = renderer.getPlayLayer()->m_effectManager->opacityModForGroup(id);
+            alphaValuesPerGroupId[id] = layer->m_effectManager->opacityModForGroup(id);
         else
             alphaValuesPerGroupId[id] = 0.0;
     }
@@ -329,14 +384,23 @@ void GroupManager::updateAlphaValues() {
         u32 combCount = *(alphaFast++);
         float alpha = 1.0;
         while (combCount > 0) {
-            alpha *= alphaValuesPerGroupId[*(alphaFast++)];
+            u32 groupId = *(alphaFast++);
+            if (groupId < alphaValuesPerGroupId.size())
+                alpha *= alphaValuesPerGroupId[groupId];
             combCount--;
         }
-        alphaValuesPerAlphaIndex[alphaIndex] = alpha;
+        if (alphaIndex < alphaValuesPerAlphaIndex.size())
+            alphaValuesPerAlphaIndex[alphaIndex] = alpha;
     }
 
-    for (u32 combIndex = 0; combIndex < groupCombinationCount; combIndex++)
-        groupStates[combIndex].opacity = alphaValuesPerAlphaIndex[alphaIndiciesPerGroupCombinationIndex[combIndex]];
+    for (u32 combIndex = 0; combIndex < groupCombinationCount; combIndex++) {
+        if (combIndex >= alphaIndiciesPerGroupCombinationIndex.size())
+            continue;
+
+        u32 alphaIndex = alphaIndiciesPerGroupCombinationIndex[combIndex];
+        if (alphaIndex < alphaValuesPerAlphaIndex.size())
+            groupStates[combIndex].opacity = alphaValuesPerAlphaIndex[alphaIndex];
+    }
 }
 
 struct PulseEntry {
@@ -373,14 +437,21 @@ struct PulseEntry {
 void GroupManager::updatePulseEntries() {
     PROFILER_SCOPE("GroupManager::updatePulseEntries");
 
-    auto effectManager = renderer.getPlayLayer()->m_effectManager;
+    PlayLayer* layer = renderer.getPlayLayer();
+    if (!layer || !layer->m_effectManager)
+        return;
+
+    auto effectManager = layer->m_effectManager;
 
     for (usize i = 0; i < getGroupCombinationCount(); i++)
         groupStates[i].pulseIndex = 0;
 
     std::vector<GroupCombinationIndex> pulsingGroupCombs;
 
-    for (GroupID gid = 0; gid < effectManager->m_unkVector2f0.size(); gid++) {
+    if (groupCombinations.empty())
+        return;
+
+    for (usize gid = 0; gid < effectManager->m_unkVector2f0.size(); gid++) {
         if (!effectManager->m_unkVector2f0[gid] || gid >= groupCombinationIndiciesPerGroupId.size())
             continue;
 
@@ -402,6 +473,9 @@ void GroupManager::updatePulseEntries() {
         const auto& comb = groupCombinations[groupCombIndex];
 
         for (GroupID gid : comb.getSpan()) {
+            if (gid < 0 || (usize)gid >= effectManager->m_unkVector2f0.size())
+                continue;
+
             if (!effectManager->m_unkVector2f0[gid])
                 continue;
 
@@ -428,6 +502,9 @@ void GroupManager::updatePulseEntries() {
     }
 
     pulseEntryBufferEnsureSize(pulseEntries.size() * sizeof(PulseEntry));
+    if (!pulseEntryBuffer)
+        return;
+
     pulseEntryBuffer->write(std::span<PulseEntry>(pulseEntries));
     pulseEntryBuffer->flush(0, pulseEntries.size() * sizeof(PulseEntry));
 }

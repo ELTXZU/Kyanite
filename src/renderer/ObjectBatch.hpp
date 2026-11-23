@@ -36,7 +36,12 @@ public:
         SpriteSheet spriteSheet
     );
 
-    void prepareSpriteMeshWrite(
+    /*
+        Returns false if this sprite cannot be rendered by the batch (for
+        example, when its sprite sheet is not loaded). Callers must not write
+        any vertices in that case.
+    */
+    bool prepareSpriteMeshWrite(
         GameObject* parentObject,
         cocos2d::CCSprite* sprite,
         SpriteType type,

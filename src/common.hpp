@@ -11,6 +11,21 @@
 #include <memory>
 #include <stdint.h>
 
+/*
+    Geode 6 uses asp's Path wrapper, Geode 5 uses std::filesystem::path
+    directly. This keeps the renderer source building against both.
+*/
+#if __has_include(<asp/fs/Path.hpp>)
+namespace bismuth {
+    using ResourcePath = asp::fs::Path;
+}
+#else
+#include <filesystem>
+namespace bismuth {
+    using ResourcePath = std::filesystem::path;
+}
+#endif
+
 #define MOVE_TRIGGER_ID   901
 #define ALPHA_TRIGGER_ID  1007
 #define TOGGLE_TRIGGER_ID 1049
@@ -86,16 +101,21 @@ inline usize alignUp(usize value, usize align) {
 
 std::string byteSizeToString(usize size);
 
+inline const char* getGLVendorString() {
+    const char* vendor = (const char*)glGetString(GL_VENDOR);
+    return vendor ? vendor : "";
+}
+
 inline bool isNVidiaGPU() {
-    return strcmp((const char*)glGetString(GL_VENDOR), "NVIDIA Corporation") == 0;
+    return strcmp(getGLVendorString(), "NVIDIA Corporation") == 0;
 }
 
 inline bool isAMDGPU() {
-    return strcmp((const char*)glGetString(GL_VENDOR), "AMD") == 0;
+    return strcmp(getGLVendorString(), "AMD") == 0;
 }
 
 inline bool isIntelGPU() {
-    return strcmp((const char*)glGetString(GL_VENDOR), "Intel") == 0;
+    return strcmp(getGLVendorString(), "Intel") == 0;
 }
 
 bool isOpenGLAtLeastVersion(u32 major, u32 minor);
@@ -108,7 +128,7 @@ void glObjectLabel(GLenum id, GLuint name, GLsizei length, const char* label);
 */
 void drawFullscreenQuad();
 
-std::optional<std::string> readResourceFile(const asp::fs::Path& path);
+std::optional<std::string> readResourceFile(const bismuth::ResourcePath& path);
 
 inline glm::vec2 getClockwise(const glm::vec2& v) {
     return { v.y, -v.x };

@@ -74,7 +74,7 @@ void decomp_GJBaseGameLayer::processRotationActions() {
         float rotation;
         bool ignoreStaticGroups;
 
-        if (staticGroup->count() != 0) {
+        if (staticGroup && staticGroup->count() != 0) {
             objectsToRotate = getGroup(gco->m_targetGroupID);
             rotation = gco->m_someInterpValue1RelatedOne - gco->m_someInterpValue1RelatedZero;
             ignoreStaticGroups = false;
@@ -82,6 +82,9 @@ void decomp_GJBaseGameLayer::processRotationActions() {
             rotation = gco->m_someInterpValue2RelatedOne - gco->m_someInterpValue2RelatedZero;
             ignoreStaticGroups = true;
         }
+
+        if (!objectsToRotate)
+            objectsToRotate = CCArray::create();
 
         if (rotation == 0.0f && !gco->m_finishRelated)
             continue;
@@ -186,6 +189,10 @@ void decomp_GJBaseGameLayer::processRotationActions() {
 void decomp_GJBaseGameLayer::optimized_processRotationActions() {
     PROFILER_SCOPE("optimized_processRotationActions");
 
+    auto renderer = Renderer::get();
+    if (!renderer)
+        return;
+
     float objLayerScaleX = m_objectLayer->getScaleX();
     float objLayerScaleY = m_objectLayer->getScaleY();
     CCPoint objLayerPos = m_objectLayer->getPosition();
@@ -207,7 +214,7 @@ void decomp_GJBaseGameLayer::optimized_processRotationActions() {
 
         GameObject* mainObject = tryGetMainObject(gco->m_centerGroupID);
 
-        GroupManager& groupManager = Renderer::get()->getGroupManager();
+        GroupManager& groupManager = renderer->getGroupManager();
 
         auto objectsToRotate = groupManager.getVanillaRotateGroup(gco->m_targetGroupID);
         // auto objectsToRotateArray = getOptimizedGroup(gco->m_targetGroupID);
@@ -217,7 +224,7 @@ void decomp_GJBaseGameLayer::optimized_processRotationActions() {
         float rotation;
         bool ignoreStaticGroups;
 
-        if (staticGroup->count() != 0) {
+        if (staticGroup && staticGroup->count() != 0) {
             // objectsToRotateArray = getGroup(gco->m_targetGroupID);
             rotation = gco->m_someInterpValue1RelatedOne - gco->m_someInterpValue1RelatedZero;
             ignoreStaticGroups = false;
@@ -349,7 +356,7 @@ void decomp_GJBaseGameLayer::processFollowActions() {
         auto targetObjects = getGroup(node->getTag());
         auto followObject = tryGetMainObject(node->m_unk074);
 
-        if (!followObject)
+        if (!followObject || !targetObjects)
             continue;
 
         float lastPosX = followObject->m_lastPosition.x;
@@ -410,11 +417,15 @@ void decomp_GJBaseGameLayer::processFollowActions() {
 }
 
 void decomp_GJBaseGameLayer::optimized_processFollowActions() {
+    auto renderer = Renderer::get();
+    if (!renderer)
+        return;
+
     for (auto node : m_effectManager->m_unkVector6d8) {
         auto targetObjects = getGroup(node->getTag());
         auto followObject = tryGetMainObject(node->m_unk074);
 
-        if (!followObject)
+        if (!followObject || !targetObjects)
             continue;
 
         float lastPosX = followObject->m_lastPosition.x;
@@ -449,8 +460,6 @@ void decomp_GJBaseGameLayer::optimized_processFollowActions() {
             m_effectManager->setFollowing(node->getTag(), node->m_unk074, isMoveX || isMoveY);
 
             m_followedCount += targetObjects->count();
-
-            auto renderer = Renderer::get();
 
             renderer->getGroupManager().moveGroup(node->getTag(), node->m_unk038, node->m_unk040);
 

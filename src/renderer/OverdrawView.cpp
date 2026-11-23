@@ -28,14 +28,18 @@ OverdrawView::~OverdrawView() {
     if (preDrawNode)
         preDrawNode->release();
     if (label)
-        label->retain();
-    instance = nullptr;
+        label->release();
+
+    if (instance == this)
+        instance = nullptr;
+
+    if (stencilTexture != 0) {
+        glDeleteTextures(1, &stencilTexture);
+        stencilTexture = 0;
+    }
 }
 
 bool OverdrawView::init() {
-    if (instance)
-        return false;
-    
     preDrawNode = new PreDrawNode(this);
     preDrawNode->autorelease();
     preDrawNode->retain();
@@ -50,6 +54,7 @@ bool OverdrawView::init() {
     label->setPosition({5.0f, 5.0f});
     label->setScale(0.7f);
 
+    initialized = true;
     instance = this;
     return true;
 }

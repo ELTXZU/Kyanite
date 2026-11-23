@@ -1,6 +1,8 @@
 #include "ObjectUtils.hpp"
 #include "Geode/cocos/cocoa/CCAffineTransform.h"
 
+#include <vector>
+
 using namespace geode::prelude;
 
 const char* zLayerAsString(ZLayer zLayer) {
@@ -174,7 +176,15 @@ void ObjectUtils::unpackSpriteRecursively(
     } else if (type == SpriteType::BASE && object->m_isColorSpriteBlack && sprite->getTag() != 997)
         parentType = SpriteType::BLACK_CHILD;
 
-    CCArrayExt<CCSprite*> spriteChildren = sprite->getChildren();
+    // Object children are normally sprites, but other node types can be
+    // attached to them. Skip anything that isn't a sprite instead of
+    // blindly casting it.
+    std::vector<cocos2d::CCSprite*> spriteChildren;
+
+    for (auto child : CCArrayExt<cocos2d::CCNode*, false>(sprite->getChildren())) {
+        if (auto spriteChild = typeinfo_cast<cocos2d::CCSprite*>(child))
+            spriteChildren.push_back(spriteChild);
+    }
 
     for (auto child : spriteChildren) {
         if (child->getZOrder() < 0)

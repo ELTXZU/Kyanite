@@ -1,4 +1,6 @@
 #include "ObjectSorter.hpp"
+#include "Geode/cocos/sprite_nodes/CCSpriteBatchNode.h"
+#include "Geode/cocos/draw_nodes/CCDrawNode.h"
 
 using namespace geode::prelude;
 
@@ -45,7 +47,8 @@ void ObjectSorter::addGameObject(GameObject* object) {
 
     if (object->m_glowSprite && !object->m_hasNoGlow) {
         auto layer = getLayer(zlayer, blending, SpriteSheet::GLOW);
-        layer->objects.push_back(object);
+        if (layer)
+            layer->objects.push_back(object);
     }
 }
 
@@ -68,11 +71,15 @@ void ObjectSorter::tryAddLayer(GJBaseGameLayer* layer, ZLayer zlayer, bool blend
     if (!node || sheet == SpriteSheet::SPECIAL || sheet == SpriteSheet::_UNK)
         return;
 
+    auto batchNode = typeinfo_cast<cocos2d::CCSpriteBatchNode*>(node);
+    if (!batchNode)
+        return;
+
     layers.push_back({
         zlayer,
         blending,
         sheet,
-        (cocos2d::CCSpriteBatchNode*)node
+        batchNode
     });
 }
 

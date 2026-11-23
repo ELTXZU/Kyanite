@@ -103,9 +103,12 @@ static void addToFunctionTime(void* name, u64 time) {
 namespace profiler {
 
 void functionPush(const char* name) {
-    auto time = getTime();
+    // Check the flag before reading the clock, otherwise every profiled
+    // function pays for a timer query even when no snapshot is being taken.
     if (!isTakingSnapshot)
         return;
+
+    auto time = getTime();
     
     if (!functionCallStack.empty()) 
         addToFunctionTime(functionCallStack.back(), time - lastFunctionTime);
@@ -115,9 +118,10 @@ void functionPush(const char* name) {
 }
 
 void functionPop() {
-    auto time = getTime();
     if (!isTakingSnapshot)
         return;
+
+    auto time = getTime();
     
     if (!functionCallStack.empty()) 
         addToFunctionTime(functionCallStack.back(), time - lastFunctionTime);

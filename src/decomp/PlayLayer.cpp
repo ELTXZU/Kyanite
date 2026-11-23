@@ -340,27 +340,35 @@ void decomp_PlayLayer::virtual_updateVisibility(float delta) {
 }
     
 void decomp_PlayLayer::optimized_updateVisibility(float delta) {
+    if (!m_effectManager || !m_player1)
+        return;
+
     if (shouldDebugDraw())
         preUpdateVisibility(delta);
     m_effectManager->processColors();
     m_effectManager->calculateLightBGColor(m_effectManager->activeColorForIndex(COLOR_P1));
 
-    float audioScale;
+    float audioScale = 0.5f;
     if (m_skipAudioStep)
         audioScale = FMODAudioEngine::sharedEngine()->getMeteringValue();
-    else
+    else if (m_audioEffectsLayer)
         audioScale = m_audioEffectsLayer->m_audioScale;
     
     if (m_isSilent || (m_isPracticeMode && !m_practiceMusicSync))
         audioScale = 0.5;
 
     m_player1->m_audioScale = audioScale;
-    m_player2->m_audioScale = audioScale;
+    if (m_player2)
+        m_player2->m_audioScale = audioScale;
 
     // TODO: Cull checkpoints and end portal!
 
-    for (auto checkpoint : CCArrayExt<CheckpointObject*, false>(m_checkpointArray))
-        checkpoint->getObject()->activateObject();
+    if (m_checkpointArray) {
+        for (auto checkpoint : CCArrayExt<CheckpointObject*, false>(m_checkpointArray)) {
+            if (checkpoint && checkpoint->getObject())
+                checkpoint->getObject()->activateObject();
+        }
+    }
 
     if (m_endPortal)
         m_endPortal->activateObject();
@@ -368,7 +376,7 @@ void decomp_PlayLayer::optimized_updateVisibility(float delta) {
     if (shouldDebugDraw()) {
         for (int index = 0; index < m_activeObjectsCount; index++) {
             GameObject* object = m_activeObjects[index];
-            if (object->m_objectType != GameObjectType::Decoration) {
+            if (object && object->m_objectType != GameObjectType::Decoration) {
                 object->activateObject();
                 object->setOpacity(0);
             }

@@ -3,18 +3,24 @@
 using namespace geode::prelude;
 
 Buffer::~Buffer() {
-    if (shouldMap) {
-        bindAs(GL_ARRAY_BUFFER);
-        glUnmapBuffer(GL_ARRAY_BUFFER);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-    } else
-        delete[] mappedData;
-    glDeleteBuffers(1, &id);
+    if (mappedData) {
+        if (shouldMap) {
+            bindAs(GL_ARRAY_BUFFER);
+            glUnmapBuffer(GL_ARRAY_BUFFER);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+        } else
+            delete[] mappedData;
+    }
+
+    mappedData = nullptr;
+
+    if (id != 0)
+        glDeleteBuffers(1, &id);
 }
 
 void Buffer::read(void* data, usize size, usize offset) {
-    assert(data != nullptr);
-    assert((offset + size) <= this->size);
+    if (!data || size == 0 || offset > this->size || size > this->size - offset)
+        return;
 
     i32 previouslyBoundBuffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previouslyBoundBuffer);
@@ -26,8 +32,8 @@ void Buffer::read(void* data, usize size, usize offset) {
 }
 
 void Buffer::write(void* data, usize size, usize offset) {
-    assert(data != nullptr);
-    assert((offset + size) <= this->size);
+    if (!data || size == 0 || offset > this->size || size > this->size - offset)
+        return;
 
     i32 previouslyBoundBuffer;
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previouslyBoundBuffer);
@@ -44,6 +50,9 @@ void* Buffer::map(i32 type) {
     if (shouldMap) {
         bindAs(GL_ARRAY_BUFFER);
         mappedData = (u8*)glMapBuffer(GL_ARRAY_BUFFER, type);
+
+        if (!mappedData)
+            log::error("Failed to map buffer '{}' ({})", name, byteSizeToString(size));
     } else {
         mappedData = new u8[size];
     }
@@ -63,7 +72,7 @@ void Buffer::unmap() {
 }
 
 void Buffer::flush(usize offset, usize size) {
-    if (!mappedData) return;
+    if (!mappedData || offset > this->size || size > this->size - offset) return;
 
     if (shouldMap) {
         bindAs(GL_ARRAY_BUFFER);
@@ -74,8 +83,13 @@ void Buffer::flush(usize offset, usize size) {
 }
 
 UPtr<Buffer> Buffer::create(const char* name, usize size, GLenum usage) {
-    u32 buffer;
+    u32 buffer = 0;
     glGenBuffers(1, &buffer);
+
+    if (buffer == 0) {
+        log::error("Failed to create buffer '{}'", name);
+        return nullptr;
+    }
 
     glObjectLabel(GL_BUFFER, buffer, strlen(name), name);
 

@@ -11,11 +11,28 @@ DifferenceMode::~DifferenceMode() {
 }
 
 void DifferenceMode::drawSceneHook() {
+    auto rendererRef = Renderer::get();
+    if (!rendererRef)
+        return;
+
+    auto scene = CCDirector::get()->getRunningScene();
+    if (!scene)
+        return;
+
     auto currentSize = CCDirector::get()->getOpenGLView()->getWindowedSize();
 
     if (lastSize != currentSize) {
         prepare(currentSize.width, currentSize.height);
         lastSize = currentSize;
+    }
+
+    if (!shader) {
+        // Without the comparison shader this mode can't draw anything.
+        // Draw the scene normally instead of leaving a black screen.
+        kmGLPushMatrix();
+        scene->visit();
+        kmGLPopMatrix();
+        return;
     }
 
     bool prevEnabled = renderer.isEnabled();
@@ -24,23 +41,18 @@ void DifferenceMode::drawSceneHook() {
     glBindFramebuffer(GL_FRAMEBUFFER, vanillaFramebuffer);
     glClear(GL_COLOR_BUFFER_BIT);
     kmGLPushMatrix();
-    CCDirector::get()->getRunningScene()->visit();
+    scene->visit();
     kmGLPopMatrix();
 
-    if (!Renderer::get())
-        return;
-    
     renderer.setEnabled(true);
     glBindFramebuffer(GL_FRAMEBUFFER, bismuthFramebuffer);
     glClear(GL_COLOR_BUFFER_BIT);
     kmGLPushMatrix();
-    CCDirector::get()->getRunningScene()->visit();
+    scene->visit();
     kmGLPopMatrix();
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    if (!Renderer::get())
-        return;
+    renderer.setEnabled(prevEnabled);
 
     storeVAO();
 
@@ -81,6 +93,9 @@ static u32 createColorFramebuffer(u32 colorTextureAttachment) {
 }
 
 void DifferenceMode::prepare(u32 width, u32 height) {
+    if (width == 0 || height == 0)
+        return;
+
     destroyFramebuffers();
 
     vanillaTexture     = createFramebufferTexture(width, height);

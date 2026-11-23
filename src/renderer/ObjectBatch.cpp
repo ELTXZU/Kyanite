@@ -62,7 +62,7 @@ SpriteVertexTransforms ObjectBatch::getSpriteVertexTransform(
     };
 }
 
-void ObjectBatch::prepareSpriteMeshWrite(
+bool ObjectBatch::prepareSpriteMeshWrite(
     GameObject* object,
     cocos2d::CCSprite* sprite,
     SpriteType type,
@@ -70,13 +70,20 @@ void ObjectBatch::prepareSpriteMeshWrite(
 ) {
     SpriteSheet spriteSheet = ObjectUtils::getSpritesheetOfObject(object, type);
     if (spriteSheetFilter != (SpriteSheet)-1 && spriteSheet != spriteSheetFilter)
-        return;
+        return false;
+
+    // Without a texture the sprite would be written as an empty quad which
+    // would still take up buffer space and a work group.
+    if (!renderer.getSpriteSheetTexture(spriteSheet))
+        return false;
 
     currentSpriteVertexTransforms    = getSpriteVertexTransform(sprite, transform, spriteSheet);
     currentSpriteObjectStartPosition = ccPointToGLM(object->m_startPosition);
 
     currentSpriteObjectIndex = renderer.getObjectIndex(object);
     currentSpriteVertexIndex = verticies.size();
+
+    return true;
 }
 
 void ObjectBatch::writeSpriteVertex(glm::vec2 pos) {
@@ -131,9 +138,10 @@ void ObjectBatch::addSprite(
     if (object->m_hasNoGlow && type == SpriteType::GLOW)
         return;
 
-    spriteCount++;
+    if (!prepareSpriteMeshWrite(object, sprite, type, transform))
+        return;
 
-    prepareSpriteMeshWrite(object, sprite, type, transform);
+    spriteCount++;
 
     usize trianglesStart = verticies.size() / 3;
 
@@ -232,6 +240,9 @@ void ObjectBatch::finishWriting() {
     rawSpriteBuffer   = RawSprite::Buffer::create(getSpriteCount(), GL_DYNAMIC_DRAW, false);
     culledIndexBuffer = Buffer::createGPUExclusive("CulledTriIndexBuffer", vertexCount / 3 * sizeof(u32));
 
+    if (!vertexBuffer || !inputSpriteBuffer || !rawSpriteBuffer || !culledIndexBuffer)
+        log::error("Failed to create one or more object batch buffers");
+
     verticies.clear();
     // indicies.clear();
     inputSprites.clear();
@@ -239,6 +250,9 @@ void ObjectBatch::finishWriting() {
 
 void ObjectBatch::draw(const LayerKey& layer) {
     PROFILER_SCOPE("ObjectBatch::draw");
+
+    if (!vertexBuffer || !culledIndexBuffer || !rawSpriteBuffer)
+        return;
 
     if (!shouldDraw(layer))
         return;
@@ -291,6 +305,8 @@ void ObjectBatch::predraw() {
     }
 
     Shader* computeShader = renderer.getCullingComputeShader();
+    if (!computeShader)
+        return;
 
     computeShader->use();
 
@@ -304,6 +320,9 @@ void ObjectBatch::predraw() {
 }
 
 void ObjectBatch::prepareCullingComputeShader() {
+    if (!inputSpriteBuffer || !rawSpriteBuffer)
+        return;
+
     inputSpriteBuffer->bindAsStorageBuffer(INPUT_SPRITE_BUFFER_BINDING);
     rawSpriteBuffer->bind();
 }

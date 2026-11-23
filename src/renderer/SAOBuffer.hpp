@@ -116,8 +116,11 @@ private:
         if (!buffers[index])
             return false;
 
-        if (shouldMap)
+        if (shouldMap) {
             mappedBuffer[index] = (u8*)buffers[index]->mapReadWrite();
+            if (!mappedBuffer[index])
+                return false;
+        }
 
         if constexpr (sizeof...(OtherVars_) > 0)
             return createBuffersRecursive<OtherVars_...>(index + 1, shouldMap);

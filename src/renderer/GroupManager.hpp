@@ -34,6 +34,8 @@ using GroupCombinationIndex = u32;
 
 class GroupCombination {
 public:
+    // Objects are limited to 10 group ids by the game, but the count is
+    // clamped anyway so a malformed object can never overflow the array.
     GroupCombination(std::array<GroupID, 10>* groupIds, i32 count);
     GroupCombination(std::vector<GroupID> groupIds);
     inline GroupCombination() : count(0) {}
@@ -126,7 +128,14 @@ public:
         return { groupStates, groupStates + getGroupCombinationCount() };
     }
 
-    inline const std::set<GameObject*> getVanillaRotateGroup(GroupID id) { return vanillaRotateGroups[id]; }
+    inline const std::set<GameObject*>& getVanillaRotateGroup(GroupID id) const {
+        static const std::set<GameObject*> empty;
+
+        if (id < 0 || (usize)id >= vanillaRotateGroups.size())
+            return empty;
+
+        return vanillaRotateGroups[id];
+    }
 
     void fetchVanilaRotateGroups();
 
@@ -141,6 +150,8 @@ public:
     void restoreCheckpoint(CheckpointObject* checkpoint);
 
     void removeCheckpoint(CheckpointObject* checkpoint);
+
+    void clearCheckpoints();
 
     //// TRIGGER ACTIONS ////
 

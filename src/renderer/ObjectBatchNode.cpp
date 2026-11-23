@@ -5,5 +5,9 @@
 using namespace geode::prelude;
 
 void ObjectBatchNode::draw() {
-    Renderer::get()->getObjectBatch().draw(layerId);
+    auto renderer = Renderer::get();
+    if (!renderer)
+        return;
+
+    renderer->getObjectBatch().draw(layerId);
 }

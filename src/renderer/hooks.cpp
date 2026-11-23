@@ -1,5 +1,7 @@
 #include "Geode/cocos/CCDirector.h"
 #include "Renderer.hpp"
+#include <algorithm>
+
 #include <decomp/PlayLayer.hpp>
 #include <decomp/GJBaseGameLayer.hpp>
 #include "../cl.hpp"
@@ -8,45 +10,64 @@
 
 using namespace geode::prelude;
 
-static bool newPlayLayer = false;
-
 #include <Geode/modify/PlayLayer.hpp>
 class $modify(MyPlayLayer, PlayLayer) {
-    void setupHasCompleted() {
-        newPlayLayer = true;
-        PlayLayer::setupHasCompleted();
-        newPlayLayer = false;
+    void ensureRenderer() {
+        auto existing = Renderer::get();
+        if (existing && existing->isForLayer(this))
+            return;
+
+        if (!m_objectLayer || !m_objects) {
+            log::error("failed to attach renderer: batch layer not found");
+            return;
+        }
+
+        // Always retry when there is no renderer for this layer. If creation
+        // failed once (for example while the level was still loading) the mod
+        // would otherwise stay off and the level would run at vanilla speed.
+        auto renderer = Renderer::create(this, m_objects);
+        if (renderer)
+            m_objectLayer->addChild(renderer, -100000);
     }
 
-    bool init(GJGameLevel *level, bool dontCreateObjects) {
+    void setupHasCompleted() {
+        PlayLayer::setupHasCompleted();
+        ensureRenderer();
+    }
+
+    void setupOverdrawView() {
+        if (!m_objectLayer)
+            return;
+
+        auto view = OverdrawView::create();
+        if (!view)
+            return;
+
+        m_objectLayer->addChild(view->getPreDrawNode(), -10000);
+        m_objectLayer->addChild(view, 10000);
+        addChild(view->getText(), 10000);
+    }
+
+#if GEODE_COMP_GD_VERSION >= 22091
+    bool init(GJGameLevel* level, bool dontCreateObjects) {
         bool ret = PlayLayer::init(level, dontCreateObjects);
-        if (ret) {
-            auto view = OverdrawView::create();
-            if (view) {
-                m_objectLayer->addChild(view->getPreDrawNode(), -10000);
-                m_objectLayer->addChild(view, 10000);
-                addChild(view->getText(), 10000);
-            }
-        }
+#else
+    // 2.2081 passes whether a replay is being played before this flag.
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        bool ret = PlayLayer::init(level, useReplay, dontCreateObjects);
+#endif
+        if (ret)
+            setupOverdrawView();
+
         return ret;
     }
 
     // This gets called from inside PlayLayer::setupHasCompleted()
     void resetLevel() {
-        if (newPlayLayer) {
-            auto batchLayer = this->m_objectLayer;
-            if (!batchLayer) {
-                log::error("failed to attach renderer: batch layer not found");
-                return;
-            }
-
-            auto renderer = Renderer::create(this, m_objects);
-            if (renderer)
-                batchLayer->addChild(renderer, -100000);
-        }
+        ensureRenderer();
 
         auto renderer = Renderer::get();
-        if (renderer)
+        if (renderer && renderer->isForLayer(this))
             renderer->reset();
 
         PlayLayer::resetLevel();
@@ -54,7 +75,7 @@ class $modify(MyPlayLayer, PlayLayer) {
 
     void updateVisibility(float dt) {
         auto renderer = Renderer::get();
-        if (renderer && renderer->useOptimizations()) {
+        if (renderer && renderer->isForLayer(this) && renderer->useOptimizations()) {
             ((decomp_PlayLayer*)this)->optimized_updateVisibility(dt);
             return;
         }
@@ -66,7 +87,7 @@ class $modify(MyPlayLayer, PlayLayer) {
         CheckpointObject* ret = PlayLayer::createCheckpoint();
 
         auto renderer = Renderer::get();
-        if (renderer)
+        if (renderer && renderer->isForLayer(this))
             renderer->getGroupManager().storeCheckpoint(ret);
         
         return ret;
@@ -76,13 +97,13 @@ class $modify(MyPlayLayer, PlayLayer) {
         PlayLayer::loadFromCheckpoint(object);
 
         auto renderer = Renderer::get();
-        if (renderer)
+        if (renderer && renderer->isForLayer(this))
             renderer->getGroupManager().restoreCheckpoint(object);
     }
 
     void checkForEnd() {
         auto renderer = Renderer::get();
-        if (renderer && renderer->useOptimizations() && m_endPortal)
+        if (renderer && renderer->isForLayer(this) && renderer->useOptimizations() && m_endPortal)
             m_endPortal->updateEndPos(false);
 
         PlayLayer::checkForEnd();
@@ -123,13 +144,15 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::update(dt);
 
         auto renderer = Renderer::get();
-        if (renderer)
-            renderer->update(dt);
+        if (!renderer || !renderer->isForLayer(this))
+            return;
+
+        renderer->update(dt);
     }
 
     void processMoveActions() {
         auto renderer = Renderer::get();
-        if (renderer == nullptr) {
+        if (renderer == nullptr || !renderer->isForLayer(this)) {
             GJBaseGameLayer::processMoveActions();
             return;
         }
@@ -180,7 +203,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
 
     void siphon_processRotationActions() {
         auto renderer = Renderer::get();
-        if (renderer == nullptr) {
+        if (renderer == nullptr || !renderer->isForLayer(this)) {
             GJBaseGameLayer::processRotationActions();
             return;
         }
@@ -197,7 +220,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
             auto staticGroup = getStaticGroup(targetId);
 
             float rotation;
-            if (staticGroup->count() != 0)
+            if (staticGroup && staticGroup->count() != 0)
                 rotation = cmdObj->m_someInterpValue1RelatedOne - cmdObj->m_someInterpValue1RelatedZero;
             else
                 rotation = cmdObj->m_someInterpValue2RelatedOne - cmdObj->m_someInterpValue2RelatedZero;
@@ -215,7 +238,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
                 CCPoint extraMove = {0, 0};
 
                 if (it != m_effectManager->m_unkMap618.end()) {
-                    if (staticGroup->count() != 0)
+                    if (staticGroup && staticGroup->count() != 0)
                         extraMove = ccp(it->second->m_unk090, it->second->m_unk098);
                     else
                         extraMove = ccp(it->second->m_unk038, it->second->m_unk040);
@@ -231,7 +254,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
 
     void processRotationActions() {
         auto renderer = Renderer::get();
-        if (renderer == nullptr) {
+        if (renderer == nullptr || !renderer->isForLayer(this)) {
             GJBaseGameLayer::processRotationActions();
             return;
         }
@@ -244,6 +267,10 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
 
     void siphon_processFollowActions() {
         auto renderer = Renderer::get();
+        if (!renderer || !renderer->isForLayer(this)) {
+            GJBaseGameLayer::processFollowActions();
+            return;
+        }
 
         for (auto node : m_effectManager->m_unkVector6d8) {
             i32 targetGroupId = node->getTag();
@@ -267,7 +294,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
 
     void processFollowActions() {
         auto renderer = Renderer::get();
-        if (!renderer) {
+        if (!renderer || !renderer->isForLayer(this)) {
             GJBaseGameLayer::processFollowActions();
             return;
         }
@@ -280,8 +307,9 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
 
     void toggleGroup(int id, bool activate) {
         GJBaseGameLayer::toggleGroup(id, activate);
+
         auto renderer = Renderer::get();
-        if (renderer)
+        if (renderer && renderer->isForLayer(this))
             renderer->getGroupManager().toggleGroup(id, activate);
     }
 
@@ -289,7 +317,7 @@ class $modify(RendererGJBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::optimizeMoveGroups();
 
         auto renderer = Renderer::get();
-        if (!renderer || !renderer->useOptimizations())
+        if (!renderer || !renderer->isForLayer(this) || !renderer->useOptimizations())
             return;
 
         for (auto array : m_optimizedGroups) {

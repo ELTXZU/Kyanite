@@ -7,5 +7,5 @@ class SpriteMeshDictionary {
 public:
     static ConvexList* getSpriteMeshForSprite(cocos2d::CCSprite* sprite);
 
-    static void loadFromFile(const asp::fs::Path& path);
+    static void loadFromFile(const bismuth::ResourcePath& path);
 };

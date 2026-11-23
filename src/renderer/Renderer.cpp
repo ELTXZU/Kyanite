@@ -12,7 +12,12 @@
 #include "common.hpp"
 #include "glm/fwd.hpp"
 #include <Geode/Enums.hpp>
+#include <Geode/binding/AdvancedFollowTriggerObject.hpp>
+#include <Geode/binding/EnterEffectObject.hpp>
 #include <Geode/binding/GJBaseGameLayer.hpp>
+#include <Geode/binding/KeyframeAnimTriggerObject.hpp>
+#include <Geode/binding/KeyframeGameObject.hpp>
+#include <Geode/binding/TransformTriggerGameObject.hpp>
 #include <Geode/binding/GameObject.hpp>
 #include <Geode/binding/RingObject.hpp>
 #include "profiler.hpp"
@@ -21,6 +26,7 @@
 using namespace geode::prelude;
 
 static Renderer* currentRenderer;
+static PlayLayer* currentRendererLayer;
 
 PackedHSV packHSV(const ccHSVValue& hsv) {
     PackedHSV ret;
@@ -45,18 +51,88 @@ public:
     }
 };
 
-bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
-    if (currentRenderer)
+/*
+    These trigger types change objects in ways that can't be expressed as a
+    per-group state (they animate or transform individual objects over time).
+    Levels that contain them are still rendered by Bismuth; the objects these
+    triggers affect just keep their initial transform. The renderer is never
+    disabled for a whole level because of them, otherwise Bismuth would do
+    nothing at all on most modern levels.
+*/
+static bool levelUsesUnsupportedTriggers(cocos2d::CCArray* objects) {
+    if (!objects)
         return false;
+
+    for (auto object : CCArrayExt<GameObject*, false>(objects)) {
+        if (!object)
+            continue;
+
+        if (typeinfo_cast<EnterEffectObject*>(object) ||
+            typeinfo_cast<TransformTriggerGameObject*>(object) ||
+            typeinfo_cast<AdvancedFollowTriggerObject*>(object) ||
+            typeinfo_cast<KeyframeGameObject*>(object) ||
+            typeinfo_cast<KeyframeAnimTriggerObject*>(object))
+            return true;
+
+        // Scale trigger (2067), area effects (3006-3015), advanced follow
+        // (3016) and enter effects (3017+) all change individual objects
+        // instead of a whole group, which the group state can't represent.
+        i32 id = object->m_objectID;
+        if (id == 2067 || (id >= 3006 && id <= 3100))
+            return true;
+    }
+
+    return false;
+}
+
+bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
+    log::info("Creating renderer for a level with {} object(s)", levelObjects ? levelObjects->count() : 0);
+
+    if (currentRenderer) {
+        // A renderer for the same level is already alive. Don't create a
+        // second one.
+        if (currentRendererLayer == layer) {
+            log::warn("A renderer already exists for this layer, keeping it");
+            return false;
+        }
+
+        // A renderer from a previous level is still alive (this can happen
+        // while a level transition is in progress). Drop it so it cannot
+        // keep applying its state to the wrong PlayLayer.
+        auto stale = currentRenderer;
+        currentRenderer = nullptr;
+        currentRendererLayer = nullptr;
+
+        if (stale->getParent())
+            stale->removeFromParentAndCleanup(true);
+    }
+
     currentRenderer = this;
-    
+    currentRendererLayer = layer;
+
+    if (!initInternal(layer, levelObjects)) {
+        // create() deletes this renderer when init fails, so the global
+        // pointer must never keep aiming at it.
+        if (currentRenderer == this) {
+            currentRenderer = nullptr;
+            currentRendererLayer = nullptr;
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool Renderer::initInternal(PlayLayer* layer, CCArray* levelObjects) {
     if (!isOpenGLAtLeastVersion(4, 3)) {
         Notification::create(
             "Your device doesn't support the required OpenGL 4.3\nPlease update your drivers",
             NotificationIcon::Error,
             5.0f
         )->show();
-        log::error("Device doesn't support OpenGL 4.3. OpenGL Version: {}", (const char*)glGetString(GL_VERSION));
+
+        const char* versionString = (const char*)glGetString(GL_VERSION);
+        log::error("Device doesn't support OpenGL 4.3. OpenGL Version: {}", versionString ? versionString : "unknown");
         return false;
     }
 
@@ -67,11 +143,17 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
     
     auto size = CCDirector::get()->getWinSize();
 
-    if (!Mod::get()->getSettingValue<bool>("enabled"))
+    if (!Mod::get()->getSettingValue<bool>("enabled")) {
+        log::warn("Bismuth is disabled in the mod settings, not creating a renderer");
         return false;
+    }
 
     debugToolsEnabled = Mod::get()->getSettingValue<bool>("debug_tools");
     disableObjectPulse = Mod::get()->getSettingValue<bool>("disable_object_pulse");
+
+    if (levelUsesUnsupportedTriggers(levelObjects)) {
+        log::warn("Level uses area, transform or keyframe triggers, which the optimized renderer doesn't support yet; those objects keep their initial transform");
+    }
 
     log::info("OpenGL Version: {}", (const char*)glGetString(GL_VERSION));
 
@@ -84,6 +166,10 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
     const char* fontTexture = GameManager::get()->getFontTexture(GameManager::get()->m_loadedFont);
 
     auto tcache = cocos2d::CCTextureCache::get();
+    if (!tcache) {
+        log::error("Failed to get the texture cache");
+        return false;
+    }
     // TODO: Add text sheet
     spriteSheets[(i32)SpriteSheet::GAME_1]   = tcache->addImage("GJ_GameSheet.png", false);
     spriteSheets[(i32)SpriteSheet::GAME_2]   = tcache->addImage("GJ_GameSheet02.png", false);
@@ -91,7 +177,11 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
     spriteSheets[(i32)SpriteSheet::GLOW]     = tcache->addImage("GJ_GameSheetGlow.png", false);
     spriteSheets[(i32)SpriteSheet::FIRE]     = tcache->addImage("FireSheet_01.png", false);
     spriteSheets[(i32)SpriteSheet::PIXEL]    = tcache->addImage("PixelSheet_01.png", false);
-    spriteSheets[(i32)SpriteSheet::TEXT]     = tcache->addImage(fontTexture, false);
+
+    if (fontTexture)
+        spriteSheets[(i32)SpriteSheet::TEXT] = tcache->addImage(fontTexture, false);
+
+    usize unsupportedSheetObjectCount = 0;
 
     SpriteMeshDictionary::loadFromFile("spriteMeshes.json");
 
@@ -151,8 +241,20 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
         if (object->getHasRotateAction())
             DEBUG_LOG("  - rotationDelta: {}", ((EnhancedGameObject*)object)->m_rotationDelta);
 
+        // Objects from sheets the renderer has no texture for are skipped
+        // (this is how they were handled before), but a single one of them
+        // must not turn off the renderer for the whole level.
+        auto spriteSheet = (SpriteSheet)object->getParentMode();
+        if (spriteSheet == SpriteSheet::SPECIAL || spriteSheet == SpriteSheet::_UNK) {
+            unsupportedSheetObjectCount++;
+            continue;
+        }
+
         sorter.addGameObject(object);
     }
+
+    if (unsupportedSheetObjectCount > 0)
+        log::warn("Skipped {} object(s) whose sprite sheet can't be drawn by the renderer", unsupportedSheetObjectCount);
 
     DEBUG_LOG("m_lightBGColor: {}", layer->m_lightBGColor);
 
@@ -198,20 +300,29 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
     log::info("Compiled objectCulling shader");
 
     colorChannelBufferObject = Buffer::createDynamicDraw("ColorChannelBuffer", sizeof(ColorChannelBuffer));
-    if (!colorChannelBufferObject)
+    if (!colorChannelBufferObject) {
+        log::error("Failed to create the color channel buffer");
         return false;
+    }
+
     colorChannelBuffer = (ColorChannelBuffer*)colorChannelBufferObject->mapWriteOnly();
+    if (!colorChannelBuffer) {
+        log::error("Failed to map the color channel buffer");
+        return false;
+    }
 
     gameStateBuffer = Buffer::createDynamicDraw("GameStateBuffer", sizeof(GameStateBuffer));
-    if (!gameStateBuffer)
+    if (!gameStateBuffer) {
+        log::error("Failed to create the game state buffer");
         return false;
+    }
 
     debugText = DebugText::create();
     layer->addChild(debugText, 1000);
 
     if (useOptimizations()) {
         for (auto object : CCArrayExt<GameObject*, false>(layer->m_objects)) {
-            if (object != layer->m_endPortal)
+            if (object && object != layer->m_endPortal)
                 object->deactivateObject(true);
         }
     }
@@ -221,7 +332,9 @@ bool Renderer::init(PlayLayer* layer, CCArray* levelObjects) {
 
     rendererStartTime = getTime();
 
-    layer->m_objectLayer->addChild(new FinishNode, 99999);
+    auto finishNode = new FinishNode;
+    finishNode->autorelease();
+    layer->m_objectLayer->addChild(finishNode, 99999);
 
     reset();
 
@@ -261,14 +374,26 @@ void Renderer::generateBatchNodes() {
         batchNodes.push_back(batchNode);
     }
 
-    for (auto node : CCArrayExt<CCNode*, false>(layer->m_batchNodes)) {
-        if (node && dynamic_cast<CCSpriteBatchNode*>(node))
-            vanillaBatchNodes.insert((CCSpriteBatchNode*)node);
+    if (layer->m_batchNodes) {
+        for (auto node : CCArrayExt<CCNode*, false>(layer->m_batchNodes)) {
+            if (auto batchNode = typeinfo_cast<CCSpriteBatchNode*>(node))
+                vanillaBatchNodes.insert(batchNode);
+        }
     }
 }
 
 void Renderer::terminate() {
-    currentRenderer = nullptr;
+    if (currentRenderer == this) {
+        currentRenderer = nullptr;
+        currentRendererLayer = nullptr;
+    }
+
+    if (debugText)
+        debugText = nullptr;
+
+    batchNodes.clear();
+    vanillaBatchNodes.clear();
+
     log::info("Renderer terminated");
 }
 
@@ -428,10 +553,17 @@ void Renderer::generateObjectInfoBuffer(std::vector<GameObject*>& objects) {
     }
 
     objectInfoBuffer = Buffer::createStaticDraw("ObjectInfoBuffer", objectInfos.data(), objectInfos.size() * sizeof(ObjectInfo));
+
+    if (!objectInfoBuffer)
+        log::error("Failed to create the object info buffer");
 };
 
 void Renderer::draw() {
     PROFILER_SCOPE("Renderer::draw");
+
+    if (!shader || !cullingComputeShader)
+        return;
+
     fetchBlendingStates();
 
     u64 prevTime = getTime();
@@ -453,6 +585,9 @@ void Renderer::finish() {
 }
 
 void Renderer::updateDebugText() {
+    if (!debugText)
+        return;
+
     std::string text = "";
 
     if (!enabled) {
@@ -496,17 +631,8 @@ void Renderer::fetchBlendingStates() {
 
 void Renderer::update(float dt) {
     gameTimer += dt;
-    
-    float audioScale;
-    if (layer->m_skipAudioStep)
-        audioScale = FMODAudioEngine::sharedEngine()->getMeteringValue();
-    else
-        audioScale = layer->m_audioEffectsLayer->m_audioScale;
-    
-    if (layer->m_isSilent || (layer->m_isPracticeMode && !layer->m_practiceMusicSync))
-        audioScale = 0.5;
 
-    if (debugText->isVisible())
+    if (debugText && debugText->isVisible())
         updateDebugText();
 
     auto& gstate = layer->m_gameState;
@@ -566,6 +692,8 @@ void Renderer::setEnabled(bool enabled) {
 }
 
 void Renderer::reset() {
+    gameTimer = 0.0;
+    groupManager.clearCheckpoints();
     groupManager.resetGroupStates();
 }
 

@@ -64,7 +64,7 @@ public:
     */
     inline static UPtr<Buffer> createStaticDraw(const char* name, void* data, usize size) {
         auto ret = create(name, size, GL_STATIC_DRAW);
-        if (data)
+        if (ret && data)
             ret->write(data, size);
         return ret;
     }

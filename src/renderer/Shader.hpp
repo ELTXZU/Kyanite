@@ -15,12 +15,12 @@ public:
     ~Shader();
 
     static UPtr<Shader> create(
-        const asp::fs::Path& vertexPath,
-        const asp::fs::Path& fragmentPath,
+        const bismuth::ResourcePath& vertexPath,
+        const bismuth::ResourcePath& fragmentPath,
         std::map<std::string, std::string> macroVariables = {}
     );
 
-    static UPtr<Shader> createCompute(const asp::fs::Path& path, std::map<std::string, std::string> macroVariables = {});
+    static UPtr<Shader> createCompute(const bismuth::ResourcePath& path, std::map<std::string, std::string> macroVariables = {});
 
     inline bool isInUse() const {
         i32 boundProgram;
